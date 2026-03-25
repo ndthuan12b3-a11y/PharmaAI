@@ -54,16 +54,34 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
+  // Request logger
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+  });
+
   // API Routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", message: "Server is running" });
+  });
+
   app.post("/api/analyze", async (req, res) => {
+    console.log("Received request to /api/analyze");
     try {
       const { imageBase64, mimeType, text, patientProfile } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY;
       
+      if (!imageBase64 && !text) {
+        console.warn("Empty request body");
+        return res.status(400).json({ error: "Request body is empty" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
+        console.error("GEMINI_API_KEY is missing");
         return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
       }
 
+      console.log("Calling Gemini API...");
       const ai = new GoogleGenAI({ apiKey });
       const model = "gemini-3-flash-preview";
       const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE BỆNH NHÂN: ${patientProfile}]\n\n` : "";
@@ -79,7 +97,7 @@ async function startServer() {
         });
       }
 
-      const response = await ai.models.generateContent({
+      const result = await ai.models.generateContent({
         model,
         contents: [{ role: "user", parts }],
         config: {
@@ -88,7 +106,8 @@ async function startServer() {
         },
       });
 
-      res.json({ text: response.text });
+      console.log("Gemini API call successful");
+      res.json({ text: result.text });
     } catch (error: any) {
       console.error("Server API Error:", error);
       res.status(500).json({ error: error.message || "Internal Server Error" });
@@ -96,6 +115,7 @@ async function startServer() {
   });
 
   app.post("/api/speech", async (req, res) => {
+    console.log("Received request to /api/speech");
     try {
       const { text } = req.body;
       const apiKey = process.env.GEMINI_API_KEY;
@@ -126,6 +146,12 @@ async function startServer() {
       console.error("Server Speech Error:", error);
       res.status(500).json({ error: error.message || "Internal Server Error" });
     }
+  });
+
+  // Error handler for JSON parsing or other middleware errors
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Express Middleware Error:", err);
+    res.status(err.status || 500).json({ error: err.message || "Middleware Error" });
   });
 
   // Vite middleware for development
