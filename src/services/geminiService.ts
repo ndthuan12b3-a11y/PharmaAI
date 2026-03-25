@@ -42,58 +42,95 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 
 LƯU Ý: Nếu hình ảnh mờ, hãy ghi "[Không rõ - Cần xác nhận]". Luôn giữ thái độ chuyên nghiệp, chính xác tuyệt đối.`;
 
+function getApiKey() {
+  return import.meta.env.VITE_GEMINI_API_KEY || 
+         (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined) ||
+         "";
+}
+
 export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string) {
-  let imageBase64 = "";
-  let mimeType = "";
+  const apiKey = getApiKey();
+                 
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("API key is missing. Please configure VITE_GEMINI_API_KEY in your environment variables.");
+  }
+                 
+  const ai = new GoogleGenAI({ apiKey });
+  const model = "gemini-3-flash-preview";
+
+  const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE BỆNH NHÂN: ${patientProfile}]\n\n` : "";
+  const prompt = `${profileContext}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"`;
+
+  const parts: any[] = [{ text: prompt }];
 
   if (imageFile) {
-    imageBase64 = await new Promise<string>((resolve) => {
+    const base64Data = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base = (reader.result as string).split(',')[1];
-        resolve(base);
+        const base64 = (reader.result as string).split(',')[1];
+        resolve(base64);
       };
       reader.readAsDataURL(imageFile);
     });
-    mimeType = imageFile.type;
+    parts.push({
+      inlineData: {
+        mimeType: imageFile.type,
+        data: base64Data,
+      },
+    });
   }
 
   try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageBase64, mimeType, text, patientProfile }),
+    const response = await ai.models.generateContent({
+      model,
+      contents: [{ role: "user", parts }],
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 0.1,
+      },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Failed to analyze prescription");
+    if (!response.text) {
+      throw new Error("AI returned an empty response.");
     }
 
-    const data = await response.json();
-    return data.text;
+    return response.text;
   } catch (error: any) {
-    console.error("Client API Error:", error);
-    throw error;
+    console.error("Gemini API Error Detail:", error);
+    throw new Error(`Lỗi từ AI: ${error.message || "Không thể kết nối đến Gemini API"}`);
   }
 }
 
 export async function generateSpeech(text: string) {
+  const apiKey = getApiKey();
+                 
+  if (!apiKey || apiKey === "undefined") return null;
+                 
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const cleanText = "Dựa trên hồ sơ của bạn, Dược sĩ AI tư vấn: " + text.replace(/[*#|]/g, '').slice(0, 500);
+
   try {
-    const response = await fetch("/api/speech", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: cleanText }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+          },
+        },
+      },
     });
 
-    if (!response.ok) {
-      return null;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      return base64Audio;
     }
-
-    const data = await response.json();
-    return data.audio;
+    return null;
   } catch (error) {
-    console.error("Client Speech Error:", error);
+    console.error("TTS Error:", error);
     return null;
   }
 }
