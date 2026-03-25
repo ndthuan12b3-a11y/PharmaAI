@@ -135,9 +135,25 @@ export default function App() {
       }
 
       setMessages(prev => [...prev, aiMsg]);
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', text: "Đã xảy ra lỗi khi kết nối với AI. Vui lòng thử lại." }]);
+    } catch (error: any) {
+      console.error("Full Error Object:", error);
+      let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
+      
+      if (error.message) {
+        if (error.message.includes('API key')) {
+          errorMsg = "Lỗi: Khóa API không hợp lệ hoặc chưa được cấu hình. Vui lòng kiểm tra GEMINI_API_KEY.";
+        } else if (error.message.includes('quota')) {
+          errorMsg = "Lỗi: Đã hết hạn mức sử dụng AI (Quota exceeded). Vui lòng thử lại sau.";
+        } else {
+          errorMsg = `Lỗi hệ thống: ${error.message}`;
+        }
+      } else if (typeof error === 'string') {
+        errorMsg = `Lỗi: ${error}`;
+      } else {
+        errorMsg = "Lỗi không xác định khi gọi AI. Vui lòng kiểm tra Console log.";
+      }
+      
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', text: errorMsg }]);
     } finally {
       setIsAnalyzing(false);
     }

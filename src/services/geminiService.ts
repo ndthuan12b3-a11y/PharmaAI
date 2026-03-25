@@ -43,9 +43,13 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 LƯU Ý: Nếu hình ảnh mờ, hãy ghi "[Không rõ - Cần xác nhận]". Luôn giữ thái độ chuyên nghiệp, chính xác tuyệt đối.`;
 
 export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string) {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '') || "";
+  // Try to get API key from multiple sources
+  const apiKey = (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '') || 
+                 (import.meta.env.VITE_GEMINI_API_KEY as string) || 
+                 "";
+                 
   const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
 
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE BỆNH NHÂN: ${patientProfile}]\n\n` : "";
   const prompt = `${profileContext}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"`;
@@ -79,15 +83,27 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
       },
     });
 
+    if (!response.text) {
+      throw new Error("AI returned an empty response.");
+    }
+
     return response.text;
-  } catch (error) {
-    console.error("Gemini API Error:", error);
+  } catch (error: any) {
+    console.error("Gemini API Error Detail:", {
+      message: error.message,
+      status: error.status,
+      details: error.details,
+      model: model
+    });
     throw error;
   }
 }
 
 export async function generateSpeech(text: string) {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '') || "";
+  const apiKey = (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '') || 
+                 (import.meta.env.VITE_GEMINI_API_KEY as string) || 
+                 "";
+                 
   const ai = new GoogleGenAI({ apiKey });
   
   const cleanText = "Dựa trên hồ sơ của bạn, Dược sĩ AI tư vấn: " + text.replace(/[*#|]/g, '').slice(0, 500);
