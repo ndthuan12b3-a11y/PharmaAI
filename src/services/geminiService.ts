@@ -43,9 +43,10 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 LƯU Ý: Nếu hình ảnh mờ, hãy ghi "[Không rõ - Cần xác nhận]". Luôn giữ thái độ chuyên nghiệp, chính xác tuyệt đối.`;
 
 function getApiKey() {
-  return import.meta.env.VITE_GEMINI_API_KEY || 
-         (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined) ||
-         "";
+  // Vite will statically replace process.env.GEMINI_API_KEY with the actual string value during build.
+  // We also check import.meta.env.VITE_GEMINI_API_KEY as a fallback.
+  const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+  return key;
 }
 
 export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string) {
