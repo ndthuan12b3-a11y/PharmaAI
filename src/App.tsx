@@ -11,16 +11,23 @@ import {
   X,
   Activity,
   ShieldAlert,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Settings,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
+import { auth, db, loginWithGoogle, logout } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 
 // Reusable Components
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { Card } from './components/Card';
 import { PatientProfileModal, PatientProfile } from './components/PatientProfileModal';
+import { SettingsModal } from './components/SettingsModal';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessage } from './components/ChatMessage';
 
@@ -39,15 +46,72 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(() => {
     const saved = localStorage.getItem('pharmaProfile');
     return saved ? JSON.parse(saved) : { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
   });
+  const [settingsUrls, setSettingsUrls] = useState<string[]>(() => {
+    const saved = localStorage.getItem('pharmaUrls');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  // Firebase Auth & Sync
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          // Ensure user document exists
+          await setDoc(doc(db, 'users', currentUser.uid), {
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            createdAt: serverTimestamp()
+          }, { merge: true });
+
+          // Load profile
+          const profileRef = doc(db, 'users', currentUser.uid, 'profile', 'data');
+          const profileSnap = await getDoc(profileRef);
+          if (profileSnap.exists()) {
+            setPatientProfile(profileSnap.data() as PatientProfile);
+          }
+
+          // Load settings
+          const settingsRef = doc(db, 'users', currentUser.uid, 'settings', 'data');
+          const settingsSnap = await getDoc(settingsRef);
+          if (settingsSnap.exists()) {
+            setSettingsUrls(settingsSnap.data().urls || []);
+          }
+
+          // Load chat history
+          const chatRef = doc(db, 'users', currentUser.uid, 'chats', 'current');
+          const chatSnap = await getDoc(chatRef);
+          if (chatSnap.exists()) {
+            setMessages(chatSnap.data().messages || []);
+          }
+        } catch (error) {
+          console.error("Error syncing data:", error);
+        }
+      } else {
+        // Reset to local storage if logged out
+        const savedProfile = localStorage.getItem('pharmaProfile');
+        if (savedProfile) setPatientProfile(JSON.parse(savedProfile));
+        
+        const savedUrls = localStorage.getItem('pharmaUrls');
+        if (savedUrls) setSettingsUrls(JSON.parse(savedUrls));
+        
+        setMessages([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Global Paste Listener
   useEffect(() => {
@@ -116,7 +180,20 @@ export default function App() {
     if (typeof text !== 'string' || (!text.trim() && !image)) return;
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text || "Hãy phân tích hình ảnh đơn thuốc này." };
-    setMessages(prev => [...prev, userMsg]);
+    
+    setMessages(prev => {
+      const newMessages = [...prev, userMsg];
+      if (user) {
+        setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
+          uid: user.uid,
+          messages: newMessages,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true }).catch(console.error);
+      }
+      return newMessages;
+    });
+    
     setInput('');
     const currentImage = image;
     setImage(null);
@@ -126,7 +203,7 @@ export default function App() {
     const profileString = `Tuổi: ${patientProfile.age}, Cân nặng: ${patientProfile.weight}kg, Nhóm máu: ${patientProfile.bloodType}, Thai kỳ: ${patientProfile.pregnancyStatus}, Chức năng Gan/Thận: ${patientProfile.renalHepatic}, Dị ứng: ${patientProfile.allergy}, Bệnh nền: ${patientProfile.conditions}, Đang dùng thuốc: ${patientProfile.currentMeds}`;
 
     try {
-      const response = await analyzePrescription(currentImage, text, profileString);
+      const response = await analyzePrescription(currentImage, text, profileString, settingsUrls);
       const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
       
       const audioBase64 = await generateSpeech(aiMsg.text);
@@ -134,7 +211,18 @@ export default function App() {
         aiMsg.audio = audioBase64;
       }
 
-      setMessages(prev => [...prev, aiMsg]);
+      setMessages(prev => {
+        const newMessages = [...prev, aiMsg];
+        if (user) {
+          setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
+            uid: user.uid,
+            messages: newMessages,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }, { merge: true }).catch(console.error);
+        }
+        return newMessages;
+      });
     } catch (error: any) {
       console.error("Full Error Object:", error);
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
@@ -175,9 +263,38 @@ export default function App() {
     }
   };
 
-  const saveProfile = () => {
-    localStorage.setItem('pharmaProfile', JSON.stringify(patientProfile));
+  const saveProfile = async () => {
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'profile', 'data'), {
+          ...patientProfile,
+          uid: user.uid,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error saving profile:", error);
+      }
+    } else {
+      localStorage.setItem('pharmaProfile', JSON.stringify(patientProfile));
+    }
     setIsProfileOpen(false);
+  };
+
+  const saveSettings = async () => {
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'settings', 'data'), {
+          urls: settingsUrls,
+          uid: user.uid,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error saving settings:", error);
+      }
+    } else {
+      localStorage.setItem('pharmaUrls', JSON.stringify(settingsUrls));
+    }
+    setIsSettingsOpen(false);
   };
 
   const playAudio = (base64: string) => {
@@ -231,8 +348,41 @@ export default function App() {
         </div>
 
         <div className="space-y-3 mb-8">
+          {user ? (
+            <div className="flex items-center justify-between p-3 bg-sky-50 rounded-xl border border-sky-100 mb-4">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.email}`} alt="Avatar" className="w-8 h-8 rounded-full" />
+                <div className="truncate">
+                  <p className="text-xs font-bold text-slate-800 truncate">{user.displayName || 'Người dùng'}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                </div>
+              </div>
+              <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 transition" title="Đăng xuất">
+                <LogOut size={16} />
+              </button>
+            </div>
+          ) : (
+            <Button 
+              onClick={loginWithGoogle}
+              className="w-full bg-slate-800 hover:bg-slate-900 text-white mb-4"
+              icon={LogIn}
+            >
+              Đăng nhập / Đồng bộ
+            </Button>
+          )}
+
           <Button 
-            onClick={() => { setMessages([]); setIsSidebarOpen(false); }}
+            onClick={() => { 
+              setMessages([]); 
+              setIsSidebarOpen(false);
+              if (user) {
+                setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
+                  uid: user.uid,
+                  messages: [],
+                  updatedAt: serverTimestamp()
+                }, { merge: true }).catch(console.error);
+              }
+            }}
             className="w-full"
             icon={Plus}
           >
@@ -246,6 +396,15 @@ export default function App() {
             icon={UserCircle}
           >
             Hồ sơ cá nhân
+          </Button>
+
+          <Button 
+            onClick={() => setIsSettingsOpen(true)}
+            variant="outline"
+            className="w-full"
+            icon={Settings}
+          >
+            Cài đặt
           </Button>
         </div>
 
@@ -409,6 +568,14 @@ export default function App() {
         profile={patientProfile}
         setProfile={setPatientProfile}
         onSave={saveProfile}
+      />
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        urls={settingsUrls}
+        setUrls={setSettingsUrls}
+        onSave={saveSettings}
       />
     </div>
   );

@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "PatientProfile": {
+      "title": "PatientProfile",
+      "description": "Patient health profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "age": { "type": "string" },
+        "weight": { "type": "string" },
+        "renalHepatic": { "type": "string" },
+        "allergy": { "type": "string" },
+        "conditions": { "type": "string" },
+        "bloodType": { "type": "string" },
+        "currentMeds": { "type": "string" },
+        "pregnancyStatus": { "type": "string" },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "updatedAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "User settings like URLs",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "urls": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "urls", "updatedAt"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A chat session",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "role": { "type": "string" },
+              "text": { "type": "string" },
+              "audio": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "timestamp" },
+        "updatedAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "messages", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User documents"
+    },
+    "/users/{userId}/profile/data": {
+      "schema": { "$ref": "PatientProfile" },
+      "description": "Patient profile data"
+    },
+    "/users/{userId}/settings/data": {
+      "schema": { "$ref": "Settings" },
+      "description": "User settings"
+    },
+    "/users/{userId}/chats/{chatId}": {
+      "schema": { "$ref": "ChatSession" },
+      "description": "Chat sessions"
+    }
+  }
+}

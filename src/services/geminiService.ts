@@ -54,7 +54,7 @@ function getApiKey() {
   return import.meta.env.VITE_GEMINI_API_KEY || "";
 }
 
-export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string) {
+export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string, urls: string[] = []) {
   const apiKey = getApiKey();
                  
   if (!apiKey || apiKey === "undefined") {
@@ -62,10 +62,15 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
   }
                  
   const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-flash-latest";
+  // Use gemini-3-flash-preview for better tool support (urlContext)
+  const model = "gemini-3-flash-preview";
 
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE BỆNH NHÂN: ${patientProfile}]\n\n` : "";
-  const prompt = `${profileContext}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"`;
+  
+  // If URLs are provided, add them to the prompt context as well for clarity
+  const urlContextText = urls.length > 0 ? `[NGUỒN THÔNG TIN BỔ SUNG: ${urls.join(', ')}]\n\n` : "";
+  
+  const prompt = `${profileContext}${urlContextText}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"\n\nLƯU Ý: Hãy sử dụng công cụ tìm kiếm để tra cứu thông tin từ Dược thư Quốc gia Việt Nam và các nguồn y khoa uy tín để đảm bảo tính chính xác.`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -87,13 +92,22 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
   }
 
   try {
+    const config: any = {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      temperature: 0.1,
+    };
+
+    // Add urlContext tool if URLs are provided
+    if (urls.length > 0) {
+      config.tools = [{ urlContext: {} }, { googleSearch: {} }];
+    } else {
+      config.tools = [{ googleSearch: {} }];
+    }
+
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: "user", parts }],
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.1,
-      },
+      config,
     });
 
     if (!response.text) {
