@@ -1,29 +1,26 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+
+// Import the Firebase configuration
 import firebaseConfig from '../firebase-applet-config.json';
 
+// Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
 
-export const loginWithGoogle = async () => {
+// Sign in anonymously to enable data sync without login
+export const initAuth = async () => {
   try {
-    await signInWithPopup(auth, googleProvider);
+    const userCredential = await signInAnonymously(auth);
+    return userCredential.user;
   } catch (error: any) {
-    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-      console.log("Đăng nhập bị hủy bởi người dùng.");
-      return;
+    if (error.code === 'auth/admin-restricted-operation') {
+      console.warn("Firebase Anonymous Auth is not enabled in the console. Falling back to local mode.");
+    } else {
+      console.error("Error signing in anonymously:", error);
     }
-    console.error("Login failed", error);
-  }
-};
-
-export const logout = async () => {
-  try {
-    await signOut(auth);
-  } catch (error) {
-    console.error("Logout failed", error);
+    return null;
   }
 };

@@ -3,6 +3,11 @@ import { GoogleGenAI, Modality } from "@google/genai";
 const SYSTEM_INSTRUCTION = `Bạn là CHUYÊN GIA DƯỢC LÂM SÀNG & BÁC SĨ ĐA KHOA CẤP CAO (AI Medical Assistant 2026).
 Nhiệm vụ: Phân tích đơn thuốc (OCR), chẩn đoán hình ảnh y khoa, và tư vấn phác đồ điều trị chuyên sâu dựa trên hồ sơ bệnh nhân.
 
+KẾT NỐI DƯỢC THƯ QUỐC GIA:
+- Bạn có quyền truy cập vào Google Search để tra cứu thông tin từ "Dược thư Quốc gia Việt Nam", các thông tư của Bộ Y tế (moh.gov.vn), và cơ sở dữ liệu FDA/EMA.
+- LUÔN LUÔN ưu tiên thông tin từ Dược thư Quốc gia Việt Nam cho các câu hỏi về liều dùng và tương tác tại Việt Nam.
+- Nếu có sự khác biệt giữa các nguồn, hãy ưu tiên hướng dẫn của Bộ Y tế Việt Nam.
+
 TƯ DUY LÂM SÀNG (CLINICAL REASONING 2026):
 1. Đánh giá sự phù hợp của thuốc với độ tuổi, cân nặng, chức năng gan/thận, nhóm máu, và tình trạng thai kỳ.
 2. Phát hiện tương tác thuốc (Drug-Drug, Drug-Food, Drug-Disease) dựa trên cơ sở dữ liệu Dược thư Quốc gia & FDA mới nhất.
@@ -62,7 +67,7 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
   }
                  
   const ai = new GoogleGenAI({ apiKey });
-  // Use gemini-3-flash-preview for better tool support (urlContext)
+  // Use gemini-3-flash-preview for better tool support (urlContext + googleSearch)
   const model = "gemini-3-flash-preview";
 
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE BỆNH NHÂN: ${patientProfile}]\n\n` : "";
@@ -70,7 +75,7 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
   // If URLs are provided, add them to the prompt context as well for clarity
   const urlContextText = urls.length > 0 ? `[NGUỒN THÔNG TIN BỔ SUNG: ${urls.join(', ')}]\n\n` : "";
   
-  const prompt = `${profileContext}${urlContextText}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"\n\nLƯU Ý: Hãy sử dụng công cụ tìm kiếm để tra cứu thông tin từ Dược thư Quốc gia Việt Nam và các nguồn y khoa uy tín để đảm bảo tính chính xác.`;
+  const prompt = `${profileContext}${urlContextText}YÊU CẦU NGƯỜI DÙNG: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -92,22 +97,22 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
   }
 
   try {
-    const config: any = {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      temperature: 0.1,
-    };
-
+    const tools: any[] = [{ googleSearch: {} }];
+    
     // Add urlContext tool if URLs are provided
     if (urls.length > 0) {
-      config.tools = [{ urlContext: {} }, { googleSearch: {} }];
-    } else {
-      config.tools = [{ googleSearch: {} }];
+      tools.push({ urlContext: {} });
     }
 
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: "user", parts }],
-      config,
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 0.1,
+        tools,
+        toolConfig: { includeServerSideToolInvocations: true }
+      },
     });
 
     if (!response.text) {

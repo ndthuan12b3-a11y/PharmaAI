@@ -13,14 +13,27 @@ import {
   ShieldAlert,
   Image as ImageIcon,
   Settings,
-  LogIn,
-  LogOut
+  Globe,
+  Wifi,
+  WifiOff,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
-import { auth, db, loginWithGoogle, logout } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth, initAuth } from './firebase';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  addDoc, 
+  deleteDoc, 
+  getDocs,
+  serverTimestamp,
+  getDoc
+} from 'firebase/firestore';
 
 // Reusable Components
 import { Button } from './components/Button';
@@ -31,14 +44,101 @@ import { SettingsModal } from './components/SettingsModal';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessage } from './components/ChatMessage';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let displayMessage = "Đã xảy ra lỗi không mong muốn.";
+      try {
+        const parsed = JSON.parse(this.state.error.message);
+        if (parsed.error && parsed.error.includes('insufficient permissions')) {
+          displayMessage = "Lỗi phân quyền: Bạn không có quyền thực hiện thao tác này.";
+        }
+      } catch (e) {}
+
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-slate-50 p-6 text-center">
+          <div className="bg-red-100 p-6 rounded-full text-red-600 mb-4">
+            <AlertCircle size={48} />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Rất tiếc!</h1>
+          <p className="text-slate-600 mb-6 max-w-md">{displayMessage}</p>
+          <Button onClick={() => window.location.reload()}>Tải lại trang</Button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 interface Message {
   id: string;
   role: 'user' | 'ai';
   text: string;
   audio?: string;
+  timestamp?: any;
 }
 
-export default function App() {
+function AppContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [image, setImage] = useState<File | null>(null);
@@ -49,7 +149,9 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(() => {
     const saved = localStorage.getItem('pharmaProfile');
     return saved ? JSON.parse(saved) : { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
@@ -62,56 +164,55 @@ export default function App() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Firebase Auth & Sync
+  // Initialize Auth
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          // Ensure user document exists
-          await setDoc(doc(db, 'users', currentUser.uid), {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            createdAt: serverTimestamp()
-          }, { merge: true });
-
-          // Load profile
-          const profileRef = doc(db, 'users', currentUser.uid, 'profile', 'data');
-          const profileSnap = await getDoc(profileRef);
-          if (profileSnap.exists()) {
-            setPatientProfile(profileSnap.data() as PatientProfile);
-          }
-
-          // Load settings
-          const settingsRef = doc(db, 'users', currentUser.uid, 'settings', 'data');
-          const settingsSnap = await getDoc(settingsRef);
-          if (settingsSnap.exists()) {
-            setSettingsUrls(settingsSnap.data().urls || []);
-          }
-
-          // Load chat history
-          const chatRef = doc(db, 'users', currentUser.uid, 'chats', 'current');
-          const chatSnap = await getDoc(chatRef);
-          if (chatSnap.exists()) {
-            setMessages(chatSnap.data().messages || []);
-          }
-        } catch (error) {
-          console.error("Error syncing data:", error);
-        }
+    initAuth().then(user => {
+      if (user) {
+        setUserId(user.uid);
+        setIsAuthReady(true);
       } else {
-        // Reset to local storage if logged out
-        const savedProfile = localStorage.getItem('pharmaProfile');
-        if (savedProfile) setPatientProfile(JSON.parse(savedProfile));
-        
-        const savedUrls = localStorage.getItem('pharmaUrls');
-        if (savedUrls) setSettingsUrls(JSON.parse(savedUrls));
-        
-        setMessages([]);
+        // Fallback to local mode if auth fails
+        setIsAuthReady(false);
+        setAuthError('auth-disabled');
       }
     });
-    return () => unsubscribe();
   }, []);
+
+  // Sync Profile
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+    const path = `users/${userId}`;
+    const unsub = onSnapshot(doc(db, path), (docSnap) => {
+      if (docSnap.exists()) {
+        setPatientProfile(docSnap.data() as PatientProfile);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, path));
+    return unsub;
+  }, [isAuthReady, userId]);
+
+  // Sync Settings
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+    const path = `users/${userId}/settings/config`;
+    const unsub = onSnapshot(doc(db, path), (docSnap) => {
+      if (docSnap.exists()) {
+        setSettingsUrls(docSnap.data().urls || []);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, path));
+    return unsub;
+  }, [isAuthReady, userId]);
+
+  // Sync Messages
+  useEffect(() => {
+    if (!isAuthReady || !userId) return;
+    const path = `users/${userId}/messages`;
+    const q = query(collection(db, path), orderBy('timestamp', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      setMessages(msgs);
+    }, (error) => handleFirestoreError(error, OperationType.GET, path));
+    return unsub;
+  }, [isAuthReady, userId]);
 
   // Global Paste Listener
   useEffect(() => {
@@ -179,21 +280,19 @@ export default function App() {
     const text = typeof textOverride === 'string' ? textOverride : input;
     if (typeof text !== 'string' || (!text.trim() && !image)) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text || "Hãy phân tích hình ảnh đơn thuốc này." };
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text || "Hãy phân tích hình ảnh đơn thuốc này.", timestamp: Date.now() };
     
-    setMessages(prev => {
-      const newMessages = [...prev, userMsg];
-      if (user) {
-        setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
-          uid: user.uid,
-          messages: newMessages,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true }).catch(console.error);
+    if (isAuthReady && userId) {
+      const path = `users/${userId}/messages`;
+      try {
+        await addDoc(collection(db, path), { ...userMsg, timestamp: serverTimestamp() });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, path);
       }
-      return newMessages;
-    });
-    
+    } else {
+      setMessages(prev => [...prev, userMsg]);
+    }
+
     setInput('');
     const currentImage = image;
     setImage(null);
@@ -204,25 +303,23 @@ export default function App() {
 
     try {
       const response = await analyzePrescription(currentImage, text, profileString, settingsUrls);
-      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
+      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI.", timestamp: Date.now() };
       
       const audioBase64 = await generateSpeech(aiMsg.text);
       if (audioBase64) {
         aiMsg.audio = audioBase64;
       }
 
-      setMessages(prev => {
-        const newMessages = [...prev, aiMsg];
-        if (user) {
-          setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
-            uid: user.uid,
-            messages: newMessages,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          }, { merge: true }).catch(console.error);
+      if (isAuthReady && userId) {
+        const path = `users/${userId}/messages`;
+        try {
+          await addDoc(collection(db, path), { ...aiMsg, timestamp: serverTimestamp() });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.CREATE, path);
         }
-        return newMessages;
-      });
+      } else {
+        setMessages(prev => [...prev, aiMsg]);
+      }
     } catch (error: any) {
       console.error("Full Error Object:", error);
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
@@ -264,37 +361,45 @@ export default function App() {
   };
 
   const saveProfile = async () => {
-    if (user) {
+    localStorage.setItem('pharmaProfile', JSON.stringify(patientProfile));
+    if (isAuthReady && userId) {
+      const path = `users/${userId}`;
       try {
-        await setDoc(doc(db, 'users', user.uid, 'profile', 'data'), {
-          ...patientProfile,
-          uid: user.uid,
-          updatedAt: serverTimestamp()
-        });
+        await setDoc(doc(db, path), patientProfile);
       } catch (error) {
-        console.error("Error saving profile:", error);
+        handleFirestoreError(error, OperationType.UPDATE, path);
       }
-    } else {
-      localStorage.setItem('pharmaProfile', JSON.stringify(patientProfile));
     }
     setIsProfileOpen(false);
   };
 
   const saveSettings = async () => {
-    if (user) {
+    localStorage.setItem('pharmaUrls', JSON.stringify(settingsUrls));
+    if (isAuthReady && userId) {
+      const path = `users/${userId}/settings/config`;
       try {
-        await setDoc(doc(db, 'users', user.uid, 'settings', 'data'), {
-          urls: settingsUrls,
-          uid: user.uid,
-          updatedAt: serverTimestamp()
-        });
+        await setDoc(doc(db, path), { urls: settingsUrls });
       } catch (error) {
-        console.error("Error saving settings:", error);
+        handleFirestoreError(error, OperationType.UPDATE, path);
       }
-    } else {
-      localStorage.setItem('pharmaUrls', JSON.stringify(settingsUrls));
     }
     setIsSettingsOpen(false);
+  };
+
+  const clearChat = async () => {
+    if (isAuthReady && userId) {
+      const path = `users/${userId}/messages`;
+      try {
+        const snapshot = await getDocs(collection(db, path));
+        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, path);
+      }
+    } else {
+      setMessages([]);
+    }
+    setIsSidebarOpen(false);
   };
 
   const playAudio = (base64: string) => {
@@ -348,41 +453,8 @@ export default function App() {
         </div>
 
         <div className="space-y-3 mb-8">
-          {user ? (
-            <div className="flex items-center justify-between p-3 bg-sky-50 rounded-xl border border-sky-100 mb-4">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.email}`} alt="Avatar" className="w-8 h-8 rounded-full" />
-                <div className="truncate">
-                  <p className="text-xs font-bold text-slate-800 truncate">{user.displayName || 'Người dùng'}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
-                </div>
-              </div>
-              <button onClick={logout} className="p-2 text-slate-400 hover:text-red-500 transition" title="Đăng xuất">
-                <LogOut size={16} />
-              </button>
-            </div>
-          ) : (
-            <Button 
-              onClick={loginWithGoogle}
-              className="w-full bg-slate-800 hover:bg-slate-900 text-white mb-4"
-              icon={LogIn}
-            >
-              Đăng nhập / Đồng bộ
-            </Button>
-          )}
-
           <Button 
-            onClick={() => { 
-              setMessages([]); 
-              setIsSidebarOpen(false);
-              if (user) {
-                setDoc(doc(db, 'users', user.uid, 'chats', 'current'), {
-                  uid: user.uid,
-                  messages: [],
-                  updatedAt: serverTimestamp()
-                }, { merge: true }).catch(console.error);
-              }
-            }}
+            onClick={clearChat}
             className="w-full"
             icon={Plus}
           >
@@ -454,15 +526,49 @@ export default function App() {
             </button>
             <div className="flex flex-col">
               <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI</span>
-              <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
-              </span>
+              <div className="flex items-center gap-3">
+                <span className={`text-[10px] font-semibold uppercase flex items-center gap-1 ${isAuthReady ? 'text-green-500' : (authError === 'auth-disabled' ? 'text-slate-400' : 'text-amber-500')}`}>
+                  {isAuthReady ? (
+                    <>
+                      <Wifi size={10} className="animate-pulse" /> Đồng bộ trực tuyến
+                    </>
+                  ) : authError === 'auth-disabled' ? (
+                    <>
+                      <WifiOff size={10} /> Chế độ ngoại tuyến
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff size={10} /> Đang kết nối...
+                    </>
+                  )}
+                </span>
+                <span className="text-[10px] text-sky-500 font-semibold uppercase flex items-center gap-1 border-l border-slate-200 pl-3">
+                  <Globe size={10} /> Kết nối Dược thư Quốc gia
+                </span>
+              </div>
             </div>
           </div>
         </header>
 
         {/* Chat Area */}
         <section ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
+          {authError === 'auth-disabled' && (
+            <div className="max-w-2xl mx-auto mb-6 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+              <AlertCircle className="text-amber-500 shrink-0" size={20} />
+              <div className="text-sm text-amber-800">
+                <p className="font-bold mb-1">Tính năng đồng bộ đang bị tắt</p>
+                <p>Dữ liệu hiện chỉ được lưu trên máy này. Để đồng bộ giữa các thiết bị, vui lòng bật <b>Anonymous Auth</b> trong Firebase Console.</p>
+                <a 
+                  href="https://console.firebase.google.com/project/metal-complex-472900-k6/authentication/providers" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 text-amber-900 font-bold underline"
+                >
+                  Mở trang cài đặt ngay →
+                </a>
+              </div>
+            </div>
+          )}
           {messages.length === 0 && (
             <div className="max-w-2xl mx-auto mt-10 space-y-8">
               <div className="text-center space-y-4">
@@ -578,5 +684,13 @@ export default function App() {
         onSave={saveSettings}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
   );
 }

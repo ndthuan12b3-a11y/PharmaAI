@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@supabase/supabase-js": "^2.100.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.6",
@@ -20,8 +21,6 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "firebase": "^12.11.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
