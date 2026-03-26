@@ -153,12 +153,28 @@ function AppContent() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(() => {
-    const saved = localStorage.getItem('pharmaProfile');
-    return saved ? JSON.parse(saved) : { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
+    try {
+      const saved = localStorage.getItem('pharmaProfile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {
+      console.error("Error parsing profile from localStorage:", e);
+    }
+    return { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
   });
   const [settingsUrls, setSettingsUrls] = useState<string[]>(() => {
-    const saved = localStorage.getItem('pharmaUrls');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('pharmaUrls');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error("Error parsing URLs from localStorage:", e);
+    }
+    return [];
   });
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -182,36 +198,55 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthReady || !userId) return;
     const path = `users/${userId}`;
-    const unsub = onSnapshot(doc(db, path), (docSnap) => {
-      if (docSnap.exists()) {
-        setPatientProfile(docSnap.data() as PatientProfile);
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, path));
-    return unsub;
+    try {
+      const unsub = onSnapshot(doc(db, path), (docSnap) => {
+        if (docSnap.exists()) {
+          setPatientProfile(docSnap.data() as PatientProfile);
+        }
+      }, (error) => {
+        console.error("Profile Sync Error:", error);
+        // Don't throw here to avoid crashing, just log
+      });
+      return unsub;
+    } catch (e) {
+      console.error("Error setting up profile snapshot:", e);
+    }
   }, [isAuthReady, userId]);
 
   // Sync Settings
   useEffect(() => {
     if (!isAuthReady || !userId) return;
     const path = `users/${userId}/settings/config`;
-    const unsub = onSnapshot(doc(db, path), (docSnap) => {
-      if (docSnap.exists()) {
-        setSettingsUrls(docSnap.data().urls || []);
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, path));
-    return unsub;
+    try {
+      const unsub = onSnapshot(doc(db, path), (docSnap) => {
+        if (docSnap.exists()) {
+          setSettingsUrls(docSnap.data().urls || []);
+        }
+      }, (error) => {
+        console.error("Settings Sync Error:", error);
+      });
+      return unsub;
+    } catch (e) {
+      console.error("Error setting up settings snapshot:", e);
+    }
   }, [isAuthReady, userId]);
 
   // Sync Messages
   useEffect(() => {
     if (!isAuthReady || !userId) return;
     const path = `users/${userId}/messages`;
-    const q = query(collection(db, path), orderBy('timestamp', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      setMessages(msgs);
-    }, (error) => handleFirestoreError(error, OperationType.GET, path));
-    return unsub;
+    try {
+      const q = query(collection(db, path), orderBy('timestamp', 'asc'));
+      const unsub = onSnapshot(q, (snapshot) => {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+        setMessages(msgs);
+      }, (error) => {
+        console.error("Messages Sync Error:", error);
+      });
+      return unsub;
+    } catch (e) {
+      console.error("Error setting up messages snapshot:", e);
+    }
   }, [isAuthReady, userId]);
 
   // Global Paste Listener
