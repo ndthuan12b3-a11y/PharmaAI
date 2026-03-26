@@ -140,8 +140,10 @@ export default function App() {
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
       
       if (error.message) {
-        if (error.message.includes('API key')) {
-          errorMsg = "Lỗi: Khóa API không hợp lệ hoặc chưa được cấu hình. Vui lòng kiểm tra GEMINI_API_KEY.";
+        if (error.message.includes('MISSING_API_KEY')) {
+          errorMsg = "Lỗi: Chưa tìm thấy API Key. Vui lòng thêm biến GEMINI_API_KEY vào Vercel và Redeploy.";
+        } else if (error.message.includes('API key')) {
+          errorMsg = "Lỗi: Khóa API của bạn bị Google từ chối (Không hợp lệ). Vui lòng kiểm tra lại mã GEMINI_API_KEY đã nhập chính xác chưa.";
         } else if (error.message.includes('quota')) {
           errorMsg = "Lỗi: Đã hết hạn mức sử dụng AI (Quota exceeded). Vui lòng thử lại sau.";
         } else {

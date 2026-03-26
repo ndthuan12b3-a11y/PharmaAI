@@ -10,7 +10,7 @@ export default defineConfig(({mode}) => {
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
+      '__GEMINI_API_KEY__': JSON.stringify(apiKey),
     },
     resolve: {
       alias: {

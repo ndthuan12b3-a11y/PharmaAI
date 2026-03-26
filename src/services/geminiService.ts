@@ -42,18 +42,23 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 
 LƯU Ý: Nếu hình ảnh mờ, hãy ghi "[Không rõ - Cần xác nhận]". Luôn giữ thái độ chuyên nghiệp, chính xác tuyệt đối.`;
 
+declare const __GEMINI_API_KEY__: string | undefined;
+
 function getApiKey() {
-  // Vite will statically replace process.env.GEMINI_API_KEY with the actual string value during build.
-  // We also check import.meta.env.VITE_GEMINI_API_KEY as a fallback.
-  const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
-  return key;
+  try {
+    if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__) {
+      return __GEMINI_API_KEY__;
+    }
+  } catch (e) {}
+  
+  return import.meta.env.VITE_GEMINI_API_KEY || "";
 }
 
 export async function analyzePrescription(imageFile: File | null, text: string, patientProfile: string) {
   const apiKey = getApiKey();
                  
   if (!apiKey || apiKey === "undefined") {
-    throw new Error("API key is missing. Please configure VITE_GEMINI_API_KEY in your environment variables.");
+    throw new Error("MISSING_API_KEY");
   }
                  
   const ai = new GoogleGenAI({ apiKey });
