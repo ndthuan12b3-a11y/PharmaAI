@@ -7,138 +7,37 @@ import {
   User as UserMd, 
   Pill as Capsules, 
   Receipt as FileInvoiceDollar, 
-  Loader2,
-  X,
-  Activity,
-  ShieldAlert,
-  Image as ImageIcon,
+  Search,
+  BookOpen,
+  History,
   Settings,
-  Globe,
-  Wifi,
-  WifiOff,
-  AlertCircle
+  HelpCircle,
+  Stethoscope,
+  X,
+  ShieldAlert,
+  Activity,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
-import { db, auth, initAuth } from './firebase';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  addDoc, 
-  deleteDoc, 
-  getDocs,
-  serverTimestamp,
-  getDoc
-} from 'firebase/firestore';
 
 // Reusable Components
 import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { Card } from './components/Card';
 import { PatientProfileModal, PatientProfile } from './components/PatientProfileModal';
-import { SettingsModal } from './components/SettingsModal';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessage } from './components/ChatMessage';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      let displayMessage = "Đã xảy ra lỗi không mong muốn.";
-      try {
-        const parsed = JSON.parse(this.state.error.message);
-        if (parsed.error && parsed.error.includes('insufficient permissions')) {
-          displayMessage = "Lỗi phân quyền: Bạn không có quyền thực hiện thao tác này.";
-        }
-      } catch (e) {}
-
-      return (
-        <div className="flex flex-col items-center justify-center h-screen bg-slate-50 p-6 text-center">
-          <div className="bg-red-100 p-6 rounded-full text-red-600 mb-4">
-            <AlertCircle size={48} />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">Rất tiếc!</h1>
-          <p className="text-slate-600 mb-6 max-w-md">{displayMessage}</p>
-          <Button onClick={() => window.location.reload()}>Tải lại trang</Button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 interface Message {
   id: string;
   role: 'user' | 'ai';
   text: string;
   audio?: string;
-  timestamp?: any;
 }
 
-function AppContent() {
+export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [image, setImage] = useState<File | null>(null);
@@ -146,108 +45,15 @@ function AppContent() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [patientProfile, setPatientProfile] = useState<PatientProfile>(() => {
-    try {
-      const saved = localStorage.getItem('pharmaProfile');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') return parsed;
-      }
-    } catch (e) {
-      console.error("Error parsing profile from localStorage:", e);
-    }
-    return { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
-  });
-  const [settingsUrls, setSettingsUrls] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('pharmaUrls');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error("Error parsing URLs from localStorage:", e);
-    }
-    return [];
+    const saved = localStorage.getItem('pharmaProfile');
+    return saved ? JSON.parse(saved) : { age: '', weight: '', renalHepatic: '', allergy: '', conditions: '', bloodType: '', currentMeds: '', pregnancyStatus: 'Không' };
   });
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-
-  // Initialize Auth
-  useEffect(() => {
-    initAuth().then(user => {
-      if (user) {
-        setUserId(user.uid);
-        setIsAuthReady(true);
-      } else {
-        // Fallback to local mode if auth fails
-        setIsAuthReady(false);
-        setAuthError('auth-disabled');
-      }
-    });
-  }, []);
-
-  // Sync Profile
-  useEffect(() => {
-    if (!isAuthReady || !userId) return;
-    const path = `users/${userId}`;
-    try {
-      const unsub = onSnapshot(doc(db, path), (docSnap) => {
-        if (docSnap.exists()) {
-          setPatientProfile(docSnap.data() as PatientProfile);
-        }
-      }, (error) => {
-        console.error("Profile Sync Error:", error);
-        // Don't throw here to avoid crashing, just log
-      });
-      return unsub;
-    } catch (e) {
-      console.error("Error setting up profile snapshot:", e);
-    }
-  }, [isAuthReady, userId]);
-
-  // Sync Settings
-  useEffect(() => {
-    if (!isAuthReady || !userId) return;
-    const path = `users/${userId}/settings/config`;
-    try {
-      const unsub = onSnapshot(doc(db, path), (docSnap) => {
-        if (docSnap.exists()) {
-          setSettingsUrls(docSnap.data().urls || []);
-        }
-      }, (error) => {
-        console.error("Settings Sync Error:", error);
-      });
-      return unsub;
-    } catch (e) {
-      console.error("Error setting up settings snapshot:", e);
-    }
-  }, [isAuthReady, userId]);
-
-  // Sync Messages
-  useEffect(() => {
-    if (!isAuthReady || !userId) return;
-    const path = `users/${userId}/messages`;
-    try {
-      const q = query(collection(db, path), orderBy('timestamp', 'asc'));
-      const unsub = onSnapshot(q, (snapshot) => {
-        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-        setMessages(msgs);
-      }, (error) => {
-        console.error("Messages Sync Error:", error);
-      });
-      return unsub;
-    } catch (e) {
-      console.error("Error setting up messages snapshot:", e);
-    }
-  }, [isAuthReady, userId]);
 
   // Global Paste Listener
   useEffect(() => {
@@ -315,19 +121,8 @@ function AppContent() {
     const text = typeof textOverride === 'string' ? textOverride : input;
     if (typeof text !== 'string' || (!text.trim() && !image)) return;
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text || "Hãy phân tích hình ảnh đơn thuốc này.", timestamp: Date.now() };
-    
-    if (isAuthReady && userId) {
-      const path = `users/${userId}/messages`;
-      try {
-        await addDoc(collection(db, path), { ...userMsg, timestamp: serverTimestamp() });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, path);
-      }
-    } else {
-      setMessages(prev => [...prev, userMsg]);
-    }
-
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: text || "Hãy phân tích hình ảnh đơn thuốc này." };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     const currentImage = image;
     setImage(null);
@@ -337,24 +132,15 @@ function AppContent() {
     const profileString = `Tuổi: ${patientProfile.age}, Cân nặng: ${patientProfile.weight}kg, Nhóm máu: ${patientProfile.bloodType}, Thai kỳ: ${patientProfile.pregnancyStatus}, Chức năng Gan/Thận: ${patientProfile.renalHepatic}, Dị ứng: ${patientProfile.allergy}, Bệnh nền: ${patientProfile.conditions}, Đang dùng thuốc: ${patientProfile.currentMeds}`;
 
     try {
-      const response = await analyzePrescription(currentImage, text, profileString, settingsUrls);
-      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI.", timestamp: Date.now() };
+      const response = await analyzePrescription(currentImage, text, profileString);
+      const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
       
       const audioBase64 = await generateSpeech(aiMsg.text);
       if (audioBase64) {
         aiMsg.audio = audioBase64;
       }
 
-      if (isAuthReady && userId) {
-        const path = `users/${userId}/messages`;
-        try {
-          await addDoc(collection(db, path), { ...aiMsg, timestamp: serverTimestamp() });
-        } catch (error) {
-          handleFirestoreError(error, OperationType.CREATE, path);
-        }
-      } else {
-        setMessages(prev => [...prev, aiMsg]);
-      }
+      setMessages(prev => [...prev, aiMsg]);
     } catch (error: any) {
       console.error("Full Error Object:", error);
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
@@ -395,46 +181,9 @@ function AppContent() {
     }
   };
 
-  const saveProfile = async () => {
+  const saveProfile = () => {
     localStorage.setItem('pharmaProfile', JSON.stringify(patientProfile));
-    if (isAuthReady && userId) {
-      const path = `users/${userId}`;
-      try {
-        await setDoc(doc(db, path), patientProfile);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, path);
-      }
-    }
     setIsProfileOpen(false);
-  };
-
-  const saveSettings = async () => {
-    localStorage.setItem('pharmaUrls', JSON.stringify(settingsUrls));
-    if (isAuthReady && userId) {
-      const path = `users/${userId}/settings/config`;
-      try {
-        await setDoc(doc(db, path), { urls: settingsUrls });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, path);
-      }
-    }
-    setIsSettingsOpen(false);
-  };
-
-  const clearChat = async () => {
-    if (isAuthReady && userId) {
-      const path = `users/${userId}/messages`;
-      try {
-        const snapshot = await getDocs(collection(db, path));
-        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deletePromises);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, path);
-      }
-    } else {
-      setMessages([]);
-    }
-    setIsSidebarOpen(false);
   };
 
   const playAudio = (base64: string) => {
@@ -477,10 +226,10 @@ function AppContent() {
       `}>
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-sky-400 to-sky-600 w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-200">
-              <Microchip size={20} />
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
+              <Stethoscope size={20} />
             </div>
-            <h1 className="text-xl font-bold gradient-text">PharmaAI 2026</h1>
+            <h1 className="text-xl font-bold gradient-text">Dược Sĩ AI</h1>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-red-500">
             <X size={24} />
@@ -489,8 +238,8 @@ function AppContent() {
 
         <div className="space-y-3 mb-8">
           <Button 
-            onClick={clearChat}
-            className="w-full"
+            onClick={() => { setMessages([]); setIsSidebarOpen(false); }}
+            className="w-full justify-start px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all"
             icon={Plus}
           >
             Tư vấn mới
@@ -499,33 +248,56 @@ function AppContent() {
           <Button 
             onClick={() => setIsProfileOpen(true)}
             variant="outline"
-            className="w-full"
+            className="w-full justify-start px-4 py-3 rounded-xl border-slate-200 hover:bg-slate-50 text-slate-700 transition-all"
             icon={UserCircle}
           >
-            Hồ sơ cá nhân
-          </Button>
-
-          <Button 
-            onClick={() => setIsSettingsOpen(true)}
-            variant="outline"
-            className="w-full"
-            icon={Settings}
-          >
-            Cài đặt
+            Hồ sơ bệnh nhân
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-4 scrollbar-hide">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lịch sử tư vấn</p>
-          <div className="space-y-2">
-            {messages.length > 0 ? (
-              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs font-semibold text-blue-700 truncate">
-                Phiên tư vấn hiện tại
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic">Chưa có lịch sử tư vấn</p>
-            )}
+        <nav className="flex-1 overflow-y-auto space-y-6 scrollbar-hide">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 mb-2">Công cụ chính</p>
+            <button 
+              onClick={() => { setInput('Tra cứu thông tin thuốc trong Dược thư Quốc gia: '); setIsSidebarOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 rounded-xl transition-colors group"
+            >
+              <BookOpen size={18} className="text-slate-400 group-hover:text-blue-500" />
+              Tra cứu Dược thư
+            </button>
+            <button 
+              onClick={() => { setInput('Kiểm tra tương tác thuốc giữa: '); setIsSidebarOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 rounded-xl transition-colors group"
+            >
+              <ShieldAlert size={18} className="text-slate-400 group-hover:text-blue-500" />
+              Kiểm tra tương tác
+            </button>
           </div>
+
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 mb-2">Lịch sử tư vấn</p>
+            <div className="space-y-1 px-2">
+              {messages.length > 0 ? (
+                <div className="p-3 bg-blue-50/50 border border-blue-100/50 rounded-xl text-xs font-medium text-blue-700 flex items-center gap-2">
+                  <History size={14} />
+                  Phiên hiện tại
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 italic px-2">Chưa có lịch sử</p>
+              )}
+            </div>
+          </div>
+        </nav>
+
+        <div className="pt-6 mt-6 border-t border-slate-100 space-y-1">
+          <button className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">
+            <Settings size={18} />
+            Cài đặt
+          </button>
+          <button className="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">
+            <HelpCircle size={18} />
+            Trợ giúp
+          </button>
         </div>
       </aside>
 
@@ -560,74 +332,50 @@ function AppContent() {
               <Menu size={20} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI</span>
-              <div className="flex items-center gap-3">
-                <span className={`text-[10px] font-semibold uppercase flex items-center gap-1 ${isAuthReady ? 'text-green-500' : (authError === 'auth-disabled' ? 'text-slate-400' : 'text-amber-500')}`}>
-                  {isAuthReady ? (
-                    <>
-                      <Wifi size={10} className="animate-pulse" /> Đồng bộ trực tuyến
-                    </>
-                  ) : authError === 'auth-disabled' ? (
-                    <>
-                      <WifiOff size={10} /> Chế độ ngoại tuyến
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff size={10} /> Đang kết nối...
-                    </>
-                  )}
-                </span>
-                <span className="text-[10px] text-sky-500 font-semibold uppercase flex items-center gap-1 border-l border-slate-200 pl-3">
-                  <Globe size={10} /> Kết nối Dược thư Quốc gia
-                </span>
-              </div>
+              <span className="text-sm font-bold text-slate-800">Dược Sĩ Lâm Sàng AI</span>
+              <span className="text-[10px] text-blue-600 font-semibold uppercase flex items-center gap-1">
+                <BookOpen size={10} /> Kết nối Dược thư Quốc gia
+              </span>
             </div>
           </div>
         </header>
 
         {/* Chat Area */}
         <section ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
-          {authError === 'auth-disabled' && (
-            <div className="max-w-2xl mx-auto mb-6 p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
-              <AlertCircle className="text-amber-500 shrink-0" size={20} />
-              <div className="text-sm text-amber-800">
-                <p className="font-bold mb-1">Tính năng đồng bộ đang bị tắt</p>
-                <p>Dữ liệu hiện chỉ được lưu trên máy này. Để đồng bộ giữa các thiết bị, vui lòng bật <b>Anonymous Auth</b> trong Firebase Console.</p>
-                <a 
-                  href="https://console.firebase.google.com/project/metal-complex-472900-k6/authentication/providers" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-block mt-2 text-amber-900 font-bold underline"
-                >
-                  Mở trang cài đặt ngay →
-                </a>
-              </div>
-            </div>
-          )}
           {messages.length === 0 && (
             <div className="max-w-2xl mx-auto mt-10 space-y-8">
               <div className="text-center space-y-4">
-                <div className="inline-block p-4 bg-white rounded-3xl shadow-xl shadow-sky-100 border border-sky-50">
-                  <UserMd size={40} className="text-sky-500" />
+                <div className="inline-block p-5 bg-white rounded-3xl shadow-xl shadow-blue-100 border border-blue-50">
+                  <Stethoscope size={48} className="text-blue-600" />
                 </div>
-                <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
-                <p className="text-slate-500 text-lg">Cung cấp thông tin thuốc chính xác dựa trên bằng chứng y khoa hiện đại nhất.</p>
+                <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Hệ thống Dược sĩ Lâm sàng AI</h2>
+                <p className="text-slate-500 text-lg max-w-lg mx-auto">Tư vấn sử dụng thuốc an toàn, hiệu quả dựa trên Dược thư Quốc gia Việt Nam và hồ sơ bệnh nhân.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card 
                   variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2]?')}
+                  className="cursor-pointer group hover:border-blue-300 hover:bg-blue-50/50 transition-all p-6 border-slate-200"
+                  onClick={() => setInput('Tra cứu thông tin chi tiết thuốc [Tên thuốc] trong Dược thư Quốc gia Việt Nam?')}
                 >
-                  <Capsules size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Kiểm tra tương tác</p>
-                  <p className="text-xs text-slate-400">Phát hiện các loại thuốc kỵ nhau</p>
+                  <BookOpen size={24} className="text-blue-500 mb-3 group-hover:scale-110 transition" />
+                  <p className="text-base font-bold text-slate-800">Tra cứu Dược thư</p>
+                  <p className="text-sm text-slate-500">Thông tin chính thống từ Dược thư Quốc gia</p>
+                </Card>
+
+                <Card 
+                  variant="outline"
+                  className="cursor-pointer group hover:border-blue-300 hover:bg-blue-50/50 transition-all p-6 border-slate-200"
+                  onClick={() => setInput('Kiểm tra tương tác thuốc giữa [Thuốc A] và [Thuốc B] trên bệnh nhân này?')}
+                >
+                  <ShieldAlert size={24} className="text-blue-500 mb-3 group-hover:scale-110 transition" />
+                  <p className="text-base font-bold text-slate-800">Kiểm tra tương tác</p>
+                  <p className="text-sm text-slate-500">Phát hiện tương kỵ và cảnh báo an toàn</p>
                 </Card>
                 
                 <Card 
                   variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
+                  className="cursor-pointer group hover:border-blue-300 hover:bg-blue-50/50 transition-all p-6 border-slate-200"
                   onClick={() => {
                     setInput('Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi.');
                     const input = document.createElement('input');
@@ -643,29 +391,19 @@ function AppContent() {
                     input.click();
                   }}
                 >
-                  <FileInvoiceDollar size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Đọc đơn thuốc bệnh viện</p>
-                  <p className="text-xs text-slate-400">Bóc tách liều dùng từ ảnh chụp</p>
+                  <FileInvoiceDollar size={24} className="text-blue-500 mb-3 group-hover:scale-110 transition" />
+                  <p className="text-base font-bold text-slate-800">Phân tích đơn thuốc</p>
+                  <p className="text-sm text-slate-500">OCR bóc tách dữ liệu từ ảnh chụp đơn thuốc</p>
                 </Card>
 
                 <Card 
                   variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Lên lịch uống thuốc cho bệnh nhân đang dùng: [Liệt kê các thuốc và liều lượng].')}
+                  className="cursor-pointer group hover:border-blue-300 hover:bg-blue-50/50 transition-all p-6 border-slate-200"
+                  onClick={() => setInput('Tư vấn sử dụng thuốc an toàn cho bệnh nhân có bệnh nền: [Tên bệnh].')}
                 >
-                  <Activity size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Lên lịch uống thuốc</p>
-                  <p className="text-xs text-slate-400">Tối ưu hóa thời gian dùng thuốc</p>
-                </Card>
-
-                <Card 
-                  variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Tư vấn sử dụng [Tên thuốc] an toàn cho phụ nữ có thai [Số tháng] đầu.')}
-                >
-                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">An toàn thai kỳ</p>
-                  <p className="text-xs text-slate-400">Đánh giá nguy cơ theo FDA</p>
+                  <Activity size={24} className="text-blue-500 mb-3 group-hover:scale-110 transition" />
+                  <p className="text-base font-bold text-slate-800">Tư vấn bệnh nền</p>
+                  <p className="text-sm text-slate-500">Cá thể hóa phác đồ theo tình trạng bệnh</p>
                 </Card>
               </div>
             </div>
@@ -710,22 +448,6 @@ function AppContent() {
         setProfile={setPatientProfile}
         onSave={saveProfile}
       />
-      {/* Settings Modal */}
-      <SettingsModal 
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        urls={settingsUrls}
-        setUrls={setSettingsUrls}
-        onSave={saveSettings}
-      />
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <ErrorBoundary>
-      <AppContent />
-    </ErrorBoundary>
   );
 }
