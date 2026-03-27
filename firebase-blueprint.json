@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "PatientProfile": {
+      "title": "PatientProfile",
+      "description": "Information about the patient for clinical reasoning",
+      "type": "object",
+      "properties": {
+        "age": { "type": "string" },
+        "weight": { "type": "string" },
+        "renalHepatic": { "type": "string" },
+        "allergy": { "type": "string" },
+        "conditions": { "type": "string" },
+        "bloodType": { "type": "string" },
+        "currentMeds": { "type": "string" },
+        "pregnancyStatus": { "type": "string" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message in a chat session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "ai"] },
+        "text": { "type": "string" },
+        "audio": { "type": "string" },
+        "timestamp": { "type": "number" }
+      }
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "User specific app settings",
+      "type": "object",
+      "properties": {
+        "urls": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "PatientProfile",
+      "description": "The patient profile for a specific user"
+    },
+    "/users/{userId}/settings": {
+      "schema": "AppSettings",
+      "description": "The settings for a specific user"
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "The chat messages for a specific user"
+    }
+  }
+}

@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}
+    // Document ID: {userId}
+    // Fields:
+    //   - age: string
+    //   - weight: string
+    //   - renalHepatic: string
+    //   - allergy: string
+    //   - conditions: string
+    //   - bloodType: string
+    //   - currentMeds: string
+    //   - pregnancyStatus: string
+    //
+    // Collection: /users/{userId}/settings
+    // Document ID: 'config'
+    // Fields:
+    //   - urls: list of strings
+    //
+    // Collection: /users/{userId}/messages/{messageId}
+    // Document ID: {messageId}
+    // Fields:
+    //   - id: string
+    //   - role: string (user/ai)
+    //   - text: string
+    //   - audio: string (optional)
+    //   - timestamp: number
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "AlanwalkerT2002@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Domain Validators
+    function isValidProfile(data) {
+      return hasOnlyAllowedFields(['age', 'weight', 'renalHepatic', 'allergy', 'conditions', 'bloodType', 'currentMeds', 'pregnancyStatus']) &&
+        data.age is string && data.age.size() < 10 &&
+        data.weight is string && data.weight.size() < 10 &&
+        data.renalHepatic is string && data.renalHepatic.size() < 500 &&
+        data.allergy is string && data.allergy.size() < 500 &&
+        data.conditions is string && data.conditions.size() < 500 &&
+        data.bloodType is string && data.bloodType.size() < 10 &&
+        data.currentMeds is string && data.currentMeds.size() < 1000 &&
+        data.pregnancyStatus is string && data.pregnancyStatus.size() < 50;
+    }
+
+    function isValidMessage(data) {
+      return hasOnlyAllowedFields(['id', 'role', 'text', 'audio', 'timestamp']) &&
+        data.id is string &&
+        data.role in ['user', 'ai'] &&
+        data.text is string && data.text.size() < 10000 &&
+        (!('audio' in data) || (data.audio is string && data.audio.size() < 2000000)) &&
+        (data.timestamp is timestamp || data.timestamp is number);
+    }
+
+    function isValidSettings(data) {
+      return hasOnlyAllowedFields(['urls']) &&
+        data.urls is list && data.urls.size() < 20;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidProfile(request.resource.data);
+      
+      match /settings/{configId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId) && isValidSettings(request.resource.data);
+      }
+
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidMessage(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
