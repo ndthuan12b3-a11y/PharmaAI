@@ -1,0 +1,8 @@
+{
+  "name": "Dược Sĩ Lâm Sàng AI - Dược Thư Quốc Gia",
+  "description": "Hệ thống phân tích đơn thuốc thông minh và tra cứu Dược thư Quốc gia Việt Nam chuyên sâu.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
