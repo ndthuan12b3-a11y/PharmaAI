@@ -37,8 +37,6 @@ export default function App() {
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [generatingAudioIds, setGeneratingAudioIds] = useState<Set<string>>(new Set());
-  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -131,6 +129,11 @@ export default function App() {
       const response = await analyzePrescription(currentImage, text, profileString);
       const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
       
+      const audioBase64 = await generateSpeech(aiMsg.text);
+      if (audioBase64) {
+        aiMsg.audio = audioBase64;
+      }
+
       setMessages(prev => [...prev, aiMsg]);
     } catch (error: any) {
       console.error("Full Error Object:", error);
@@ -158,38 +161,6 @@ export default function App() {
     }
   };
 
-  const handleGenerateAudio = async (msgId: string, text: string) => {
-    if (generatingAudioIds.has(msgId)) return;
-
-    const existingMsg = messages.find(m => m.id === msgId);
-    if (existingMsg?.audio) {
-      toggleAudio(msgId, existingMsg.audio);
-      return;
-    }
-
-    setGeneratingAudioIds(prev => new Set(prev).add(msgId));
-    try {
-      const audioBase64 = await generateSpeech(text);
-      if (audioBase64) {
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, audio: audioBase64 } : m));
-        toggleAudio(msgId, audioBase64);
-      }
-    } catch (error: any) {
-      console.error("Manual TTS Error:", error);
-      if (error.message === 'MISSING_API_KEY') {
-        alert("Lỗi: Chưa có API Key. Vui lòng kiểm tra cài đặt hệ thống.");
-      } else {
-        alert(error.message || "Lỗi khi tạo giọng nói.");
-      }
-    } finally {
-      setGeneratingAudioIds(prev => {
-        const next = new Set(prev);
-        next.delete(msgId);
-        return next;
-      });
-    }
-  };
-
   const startListening = () => {
     if (recognitionRef.current) {
       setIsListening(true);
@@ -209,93 +180,9 @@ export default function App() {
     setIsProfileOpen(false);
   };
 
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const currentAudioMsgIdRef = useRef<string | null>(null);
-  const currentAudioUrlRef = useRef<string | null>(null);
-
-  const toggleAudio = (msgId: string, base64: string) => {
-    try {
-      // If clicking the same message that is already loaded
-      if (currentAudioRef.current && currentAudioMsgIdRef.current === msgId) {
-        if (currentAudioRef.current.paused) {
-          currentAudioRef.current.play();
-        } else {
-          currentAudioRef.current.pause();
-        }
-        return;
-      }
-
-      // Stop and cleanup previous audio
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current.src = "";
-        currentAudioRef.current = null;
-        currentAudioMsgIdRef.current = null;
-        if (currentAudioUrlRef.current) {
-          URL.revokeObjectURL(currentAudioUrlRef.current);
-          currentAudioUrlRef.current = null;
-        }
-      }
-
-      const binary = atob(base64);
-      const length = binary.length;
-      const buffer = new ArrayBuffer(44 + length);
-      const view = new DataView(buffer);
-
-      view.setUint32(0, 0x52494646, false);
-      view.setUint32(4, 36 + length, true);
-      view.setUint32(8, 0x57415645, false);
-      view.setUint32(12, 0x666d7420, false);
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true);
-      view.setUint32(24, 24000, true);
-      view.setUint32(28, 48000, true);
-      view.setUint16(32, 2, true);
-      view.setUint16(34, 16, true);
-      view.setUint32(36, 0x64617461, false);
-      view.setUint32(40, length, true);
-
-      const pcmData = new Uint8Array(buffer, 44);
-      for (let i = 0; i < length; i++) {
-        pcmData[i] = binary.charCodeAt(i);
-      }
-
-      const blob = new Blob([buffer], { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      
-      currentAudioRef.current = audio;
-      currentAudioMsgIdRef.current = msgId;
-      currentAudioUrlRef.current = url;
-      
-      audio.onplay = () => setPlayingMsgId(msgId);
-      audio.onpause = () => setPlayingMsgId(null);
-      audio.onended = () => {
-        setPlayingMsgId(null);
-        currentAudioRef.current = null;
-        currentAudioMsgIdRef.current = null;
-        URL.revokeObjectURL(url);
-        currentAudioUrlRef.current = null;
-      };
-
-      audio.onerror = () => {
-        setPlayingMsgId(null);
-        currentAudioRef.current = null;
-        currentAudioMsgIdRef.current = null;
-        alert("Lỗi khi phát âm thanh.");
-      };
-
-      audio.play().catch(err => {
-        setPlayingMsgId(null);
-        if (err.name === 'NotAllowedError') {
-          alert("Vui lòng nhấn vào trang web trước khi nghe tư vấn.");
-        }
-      });
-    } catch (error) {
-      console.error("Error processing audio:", error);
-      alert("Lỗi khi xử lý dữ liệu âm thanh.");
-    }
+  const playAudio = (base64: string) => {
+    const audio = new Audio(`data:audio/wav;base64,${base64}`);
+    audio.play();
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -407,7 +294,7 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">Tư vấn AI</span>
+              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI</span>
               <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
               </span>
@@ -423,27 +310,17 @@ export default function App() {
                 <div className="inline-block p-4 bg-white rounded-3xl shadow-xl shadow-sky-100 border border-sky-50">
                   <UserMd size={40} className="text-sky-500" />
                 </div>
-                <h2 className="text-3xl font-bold text-slate-800">Dược Sĩ AI 2026</h2>
-                <p className="text-slate-500 text-lg">Hệ thống AI kết nối trực tiếp với <b>Dược thư Quốc gia Việt Nam</b> và các nguồn dữ liệu y khoa uy tín (FDA, WHO, Bộ Y tế).</p>
+                <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
+                <p className="text-slate-500 text-lg">Cung cấp thông tin thuốc chính xác dựa trên bằng chứng y khoa hiện đại nhất.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card 
                   variant="outline"
                   className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Tra cứu thông tin thuốc [Tên thuốc] trong Dược thư Quốc gia Việt Nam mới nhất.')}
+                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2]?')}
                 >
                   <Capsules size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Tra cứu Dược thư Quốc gia</p>
-                  <p className="text-xs text-slate-400">Kết nối dữ liệu thuốc chính thống VN</p>
-                </Card>
-
-                <Card 
-                  variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2] dựa trên Dược thư Quốc gia?')}
-                >
-                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Kiểm tra tương tác</p>
                   <p className="text-xs text-slate-400">Phát hiện các loại thuốc kỵ nhau</p>
                 </Card>
@@ -480,26 +357,29 @@ export default function App() {
                   <p className="text-sm font-semibold text-slate-700">Lên lịch uống thuốc</p>
                   <p className="text-xs text-slate-400">Tối ưu hóa thời gian dùng thuốc</p>
                 </Card>
+
+                <Card 
+                  variant="outline"
+                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
+                  onClick={() => setInput('Tư vấn sử dụng [Tên thuốc] an toàn cho phụ nữ có thai [Số tháng] đầu.')}
+                >
+                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
+                  <p className="text-sm font-semibold text-slate-700">An toàn thai kỳ</p>
+                  <p className="text-xs text-slate-400">Đánh giá nguy cơ theo FDA</p>
+                </Card>
               </div>
             </div>
           )}
 
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.map((msg) => (
-              <ChatMessage 
-                key={msg.id} 
-                msg={msg} 
-                toggleAudio={toggleAudio}
-                playingMsgId={playingMsgId}
-                onGenerateAudio={handleGenerateAudio}
-                generatingAudioIds={generatingAudioIds}
-              />
+              <ChatMessage key={msg.id} msg={msg} playAudio={playAudio} />
             ))}
             {isAnalyzing && (
               <div className="flex justify-start animate-fadeIn">
                 <div className="chat-bubble-ai border border-sky-100 px-5 py-4 rounded-3xl shadow-md flex items-center gap-3">
                   <Loader2 size={18} className="text-sky-600 animate-spin" />
-                  <span className="text-sm font-medium text-slate-600">đang tra cứu dữ liệu tham khảo chuẩn...</span>
+                  <span className="text-sm font-medium text-slate-600">AI đang phân tích dữ liệu lâm sàng...</span>
                 </div>
               </div>
             )}

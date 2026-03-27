@@ -3,27 +3,24 @@ import { GoogleGenAI, Modality } from "@google/genai";
 const SYSTEM_INSTRUCTION = `Bạn là CHUYÊN GIA DƯỢC LÂM SÀNG & BÁC SĨ ĐA KHOA CẤP CAO (AI Medical Assistant 2026).
 Nhiệm vụ: Phân tích đơn thuốc (OCR), chẩn đoán hình ảnh y khoa, và tư vấn phác đồ điều trị chuyên sâu dựa trên hồ sơ bệnh nhân.
 
-NGUỒN DỮ LIỆU ƯU TIÊN (BẮT BUỘC):
-1. Dược thư Quốc gia Việt Nam (phiên bản mới nhất).
-2. Hướng dẫn điều trị của Bộ Y tế Việt Nam.
-3. Cơ sở dữ liệu FDA, WHO, Medscape.
-
 TƯ DUY LÂM SÀNG (CLINICAL REASONING 2026):
 1. Đánh giá sự phù hợp của thuốc với độ tuổi, cân nặng, chức năng gan/thận, nhóm máu, và tình trạng thai kỳ.
 2. Phát hiện tương tác thuốc (Drug-Drug, Drug-Food, Drug-Disease) dựa trên cơ sở dữ liệu Dược thư Quốc gia & FDA mới nhất.
-3. Phân tích cơ chế tác dụng ngắn gọn, dược động học.
+3. Phân tích cơ chế tác dụng ngắn gọn, dược động học (hấp thu, phân bố, chuyển hóa, thải trừ).
 4. Cảnh báo các tác dụng phụ hiếm gặp nhưng nguy hiểm (Black Box Warnings).
 
 QUY TẮC TRÌNH BÀY (BẮT BUỘC SỬ DỤNG BẢNG):
-- LUÔN LUÔN dùng Markdown. Trình bày rõ ràng, mạch lạc.
+- LUÔN LUÔN dùng Markdown.
+- Trình bày rõ ràng, mạch lạc, không viết dồn chữ.
 - Bắt buộc có 1 dòng trống TRƯỚC và SAU mỗi bảng.
+- Sử dụng các biểu tượng cảm xúc (emoji) y tế để làm nổi bật thông tin.
 
 CẤU TRÚC PHẢN HỒI CHUẨN:
 
 ### 🏥 TÓM TẮT LÂM SÀNG
 - Đánh giá tổng quan về đơn thuốc/tình trạng bệnh dựa trên hồ sơ bệnh nhân.
 
-### 💊 CHI TIẾT ĐƠN THUỐC & CƠ CHẾ (Tra cứu Dược thư Quốc gia)
+### 💊 CHI TIẾT ĐƠN THUỐC & CƠ CHẾ
 | STT | Tên Thuốc (Hoạt chất) | Hàm lượng | Liều dùng & Cách dùng | Cơ chế & Dược động học |
 |:---:|:---|:---|:---|:---|
 | 01 | **[Tên thuốc]** | [Hàm lượng] | [Liều dùng] | [Cơ chế] |
@@ -42,9 +39,6 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 
 ### 💡 LỜI KHUYÊN DƯỢC SĨ (DINH DƯỠNG & SINH HOẠT)
 - [Các lời khuyên cụ thể về dinh dưỡng, sinh hoạt, theo dõi chỉ số]
-
-### 🔗 NGUỒN THAM KHẢO XÁC THỰC
-- Liệt kê các nguồn đã tra cứu (Dược thư Quốc gia, Bộ Y tế, FDA, v.v.)
 
 LƯU Ý: Nếu hình ảnh mờ, hãy ghi "[Không rõ - Cần xác nhận]". Luôn giữ thái độ chuyên nghiệp, chính xác tuyệt đối.`;
 
@@ -116,28 +110,21 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
 export async function generateSpeech(text: string) {
   const apiKey = getApiKey();
                  
-  if (!apiKey || apiKey === "undefined") {
-    throw new Error("MISSING_API_KEY");
-  }
+  if (!apiKey || apiKey === "undefined") return null;
                  
   const ai = new GoogleGenAI({ apiKey });
   
-  // Tối ưu hóa văn bản: Giới hạn 10.000 ký tự để đảm bảo ổn định (40.000 có thể gây lỗi timeout)
-  const cleanText = text
-    .replace(/[#*|]/g, '') // Xóa ký tự markdown đơn giản
-    .replace(/\n+/g, '. ') // Thay xuống dòng bằng dấu chấm
-    .trim()
-    .slice(0, 10000);
+  const cleanText = "Dựa trên hồ sơ của bạn, Dược sĩ AI tư vấn: " + text.replace(/[*#|]/g, '').slice(0, 500);
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: `Đọc văn bản sau: ${cleanText}` }] }],
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: cleanText }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' },
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' },
           },
         },
       },
@@ -147,12 +134,9 @@ export async function generateSpeech(text: string) {
     if (base64Audio) {
       return base64Audio;
     }
-    throw new Error("AI không trả về dữ liệu âm thanh.");
-  } catch (error: any) {
+    return null;
+  } catch (error) {
     console.error("TTS Error:", error);
-    if (error.message?.includes('quota')) {
-      throw new Error("Hết hạn mức sử dụng giọng nói (Quota exceeded).");
-    }
-    throw new Error(`Lỗi tạo giọng nói: ${error.message || "Không thể kết nối đến dịch vụ TTS"}`);
+    return null;
   }
 }
