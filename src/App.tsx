@@ -132,22 +132,6 @@ export default function App() {
       const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
       
       setMessages(prev => [...prev, aiMsg]);
-      
-      // Auto-generate audio in background
-      setGeneratingAudioIds(prev => new Set(prev).add(aiMsg.id));
-      generateSpeech(aiMsg.text).then(audioBase64 => {
-        if (audioBase64) {
-          setMessages(prev => prev.map(m => m.id === aiMsg.id ? { ...m, audio: audioBase64 } : m));
-        }
-      }).catch(err => console.error("Auto TTS Error:", err))
-      .finally(() => {
-        setGeneratingAudioIds(prev => {
-          const next = new Set(prev);
-          next.delete(aiMsg.id);
-          return next;
-        });
-      });
-
     } catch (error: any) {
       console.error("Full Error Object:", error);
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
@@ -423,7 +407,7 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800"> Tư vấn AI</span>
+              <span className="text-sm font-bold text-slate-800">Tư vấn AI</span>
               <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
               </span>
