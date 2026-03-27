@@ -116,20 +116,18 @@ export async function analyzePrescription(imageFile: File | null, text: string, 
 export async function generateSpeech(text: string) {
   const apiKey = getApiKey();
                  
-  if (!apiKey || apiKey === "undefined") return null;
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("MISSING_API_KEY");
+  }
                  
   const ai = new GoogleGenAI({ apiKey });
   
-  const pharmacistIntro = "Chào bạn, tôi là Dược sĩ AI. Dựa trên hồ sơ sức khỏe và Dược thư Quốc gia, tôi xin tư vấn như sau: ";
-  // Clean text more thoroughly for TTS: remove markdown tables, headers, and limit to 40000 chars
-  const cleanText = pharmacistIntro + text
-    .replace(/\|/g, ' ') // Remove table separators
-    .replace(/---/g, ' ') // Remove table dividers
-    .replace(/[#*]/g, '') // Remove headers and bold/italic markers
-    .replace(/\n+/g, '. ') // Replace newlines with dots for better pauses
-    .replace(/\s+/g, ' ') // Collapse multiple spaces
+  // Tối ưu hóa văn bản: Giới hạn 10.000 ký tự để đảm bảo ổn định (40.000 có thể gây lỗi timeout)
+  const cleanText = text
+    .replace(/[#*|]/g, '') // Xóa ký tự markdown đơn giản
+    .replace(/\n+/g, '. ') // Thay xuống dòng bằng dấu chấm
     .trim()
-    .slice(0, 40000);
+    .slice(0, 10000);
 
   try {
     const response = await ai.models.generateContent({
@@ -149,9 +147,12 @@ export async function generateSpeech(text: string) {
     if (base64Audio) {
       return base64Audio;
     }
-    return null;
-  } catch (error) {
+    throw new Error("AI không trả về dữ liệu âm thanh.");
+  } catch (error: any) {
     console.error("TTS Error:", error);
-    return null;
+    if (error.message?.includes('quota')) {
+      throw new Error("Hết hạn mức sử dụng giọng nói (Quota exceeded).");
+    }
+    throw new Error(`Lỗi tạo giọng nói: ${error.message || "Không thể kết nối đến dịch vụ TTS"}`);
   }
 }

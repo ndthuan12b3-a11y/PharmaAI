@@ -189,12 +189,14 @@ export default function App() {
       if (audioBase64) {
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, audio: audioBase64 } : m));
         toggleAudio(msgId, audioBase64);
-      } else {
-        alert("Không thể tạo giọng nói. Vui lòng thử lại.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Manual TTS Error:", error);
-      alert("Lỗi khi tạo giọng nói.");
+      if (error.message === 'MISSING_API_KEY') {
+        alert("Lỗi: Chưa có API Key. Vui lòng kiểm tra cài đặt hệ thống.");
+      } else {
+        alert(error.message || "Lỗi khi tạo giọng nói.");
+      }
     } finally {
       setGeneratingAudioIds(prev => {
         const next = new Set(prev);
@@ -421,7 +423,7 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI</span>
+              <span className="text-sm font-bold text-slate-800"> Tư vấn AI</span>
               <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
               </span>
