@@ -11,7 +11,9 @@ import {
   X,
   Activity,
   ShieldAlert,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Github,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
@@ -259,6 +261,35 @@ export default function App() {
             ) : (
               <p className="text-xs text-slate-400 italic">Chưa có lịch sử tư vấn</p>
             )}
+          </div>
+        </div>
+
+        <div className="mt-auto pt-6 border-t border-sky-50 space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
+              <Info size={16} />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Developer</span>
+              <span className="text-xs font-bold text-slate-700 truncate">NĐT</span>
+              <span className="text-[10px] text-slate-500 italic">Lead Developer</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <a 
+              href="https://github.com/ndthuan12b3-a11y/PharmaAI" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[10px] font-bold text-slate-500 hover:text-sky-600 transition-colors"
+            >
+              <Github size={14} />
+              <span>GitHub Repository</span>
+            </a>
+            <div className="flex flex-col gap-1">
+              <span className="text-[9px] text-slate-400 font-medium">Version v2.0.26 (Stable)</span>
+              <span className="text-[9px] text-slate-400 font-medium">© 2026 NĐT. All rights reserved.</span>
+            </div>
           </div>
         </div>
       </aside>
