@@ -181,48 +181,66 @@ export default function App() {
   };
 
   const playAudio = (base64: string) => {
-    // Add WAV header to raw PCM data (16-bit, 24kHz, mono)
-    const binary = atob(base64);
-    const length = binary.length;
-    const buffer = new ArrayBuffer(44 + length);
-    const view = new DataView(buffer);
+    try {
+      // Add WAV header to raw PCM data (16-bit, 24kHz, mono)
+      const binary = atob(base64);
+      const length = binary.length;
+      const buffer = new ArrayBuffer(44 + length);
+      const view = new DataView(buffer);
 
-    // RIFF identifier
-    view.setUint32(0, 0x52494646, false);
-    // file length
-    view.setUint32(4, 36 + length, true);
-    // RIFF type
-    view.setUint32(8, 0x57415645, false);
-    // format chunk identifier
-    view.setUint32(12, 0x666d7420, false);
-    // format chunk length
-    view.setUint32(16, 16, true);
-    // sample format (1 is PCM)
-    view.setUint16(20, 1, true);
-    // channel count
-    view.setUint16(22, 1, true);
-    // sample rate
-    view.setUint32(24, 24000, true);
-    // byte rate (sample rate * block align)
-    view.setUint32(28, 48000, true);
-    // block align (channel count * bytes per sample)
-    view.setUint16(32, 2, true);
-    // bits per sample
-    view.setUint16(34, 16, true);
-    // data chunk identifier
-    view.setUint32(36, 0x64617461, false);
-    // data chunk length
-    view.setUint32(40, length, true);
+      // RIFF identifier
+      view.setUint32(0, 0x52494646, false);
+      // file length
+      view.setUint32(4, 36 + length, true);
+      // RIFF type
+      view.setUint32(8, 0x57415645, false);
+      // format chunk identifier
+      view.setUint32(12, 0x666d7420, false);
+      // format chunk length
+      view.setUint32(16, 16, true);
+      // sample format (1 is PCM)
+      view.setUint16(20, 1, true);
+      // channel count
+      view.setUint16(22, 1, true);
+      // sample rate
+      view.setUint32(24, 24000, true);
+      // byte rate (sample rate * block align)
+      view.setUint32(28, 48000, true);
+      // block align (channel count * bytes per sample)
+      view.setUint16(32, 2, true);
+      // bits per sample
+      view.setUint16(34, 16, true);
+      // data chunk identifier
+      view.setUint32(36, 0x64617461, false);
+      // data chunk length
+      view.setUint32(40, length, true);
 
-    // write PCM samples
-    for (let i = 0; i < length; i++) {
-      view.setUint8(44 + i, binary.charCodeAt(i));
+      // write PCM samples using Uint8Array for better performance
+      const pcmData = new Uint8Array(buffer, 44);
+      for (let i = 0; i < length; i++) {
+        pcmData[i] = binary.charCodeAt(i);
+      }
+
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      
+      audio.onerror = (e) => {
+        console.error("Audio playback error:", e);
+        alert("Lỗi khi phát âm thanh. Vui lòng thử lại.");
+      };
+
+      audio.play().catch(err => {
+        console.error("Audio play failed:", err);
+        // This often happens if the user hasn't interacted with the page yet
+        if (err.name === 'NotAllowedError') {
+          alert("Vui lòng nhấn vào trang web trước khi nghe tư vấn.");
+        }
+      });
+    } catch (error) {
+      console.error("Error processing audio:", error);
+      alert("Lỗi khi xử lý dữ liệu âm thanh.");
     }
-
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play();
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {

@@ -121,13 +121,15 @@ export async function generateSpeech(text: string) {
   const ai = new GoogleGenAI({ apiKey });
   
   const pharmacistIntro = "Chào bạn, tôi là Dược sĩ AI. Dựa trên hồ sơ sức khỏe và Dược thư Quốc gia, tôi xin tư vấn như sau: ";
-  // Clean text more thoroughly for TTS: remove markdown tables, headers, and limit to 10000 chars
+  // Clean text more thoroughly for TTS: remove markdown tables, headers, and limit to 40000 chars
   const cleanText = pharmacistIntro + text
     .replace(/\|/g, ' ') // Remove table separators
     .replace(/---/g, ' ') // Remove table dividers
     .replace(/[#*]/g, '') // Remove headers and bold/italic markers
     .replace(/\n+/g, '. ') // Replace newlines with dots for better pauses
-    .slice(0, 10000);
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .trim()
+    .slice(0, 40000);
 
   try {
     const response = await ai.models.generateContent({
