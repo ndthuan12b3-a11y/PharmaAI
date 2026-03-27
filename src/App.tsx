@@ -263,7 +263,7 @@ export default function App() {
             <div className="bg-gradient-to-br from-sky-400 to-sky-600 w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-200">
               <Microchip size={20} />
             </div>
-            <h1 className="text-xl font-bold gradient-text">PharmaAI 2026 NĐT </h1>
+            <h1 className="text-xl font-bold gradient-text">PharmaAI 2026</h1>
           </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 text-slate-400 hover:text-red-500">
             <X size={24} />
@@ -334,9 +334,9 @@ export default function App() {
               <Menu size={20} />
             </button>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI</span>
+              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI </span>
               <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng TƯ VẤN(NĐT) 
               </span>
             </div>
           </div>
