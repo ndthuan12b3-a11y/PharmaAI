@@ -11,9 +11,7 @@ import {
   X,
   Activity,
   ShieldAlert,
-  Image as ImageIcon,
-  Github,
-  Info
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
@@ -263,35 +261,6 @@ export default function App() {
             )}
           </div>
         </div>
-
-        <div className="mt-auto pt-6 border-t border-sky-50 space-y-4">
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
-              <Info size={16} />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Developer</span>
-              <span className="text-xs font-bold text-slate-700 truncate">NĐT</span>
-              <span className="text-[10px] text-slate-500 italic">Lead Developer</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <a 
-              href="https://github.com/ndthuan12b3-a11y/PharmaAI" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[10px] font-bold text-slate-500 hover:text-sky-600 transition-colors"
-            >
-              <Github size={14} />
-              <span>GitHub Repository</span>
-            </a>
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] text-slate-400 font-medium">Version v2.0.26 (Stable)</span>
-              <span className="text-[9px] text-slate-400 font-medium">© 2026 NĐT. All rights reserved.</span>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -342,26 +311,16 @@ export default function App() {
                   <UserMd size={40} className="text-sky-500" />
                 </div>
                 <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
-                <p className="text-slate-500 text-lg">Hệ thống AI kết nối trực tiếp với <b>Dược thư Quốc gia Việt Nam</b> và các nguồn dữ liệu y khoa uy tín (FDA, WHO, Bộ Y tế).</p>
+                <p className="text-slate-500 text-lg">Cung cấp thông tin thuốc chính xác dựa trên bằng chứng y khoa hiện đại nhất.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card 
                   variant="outline"
                   className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Tra cứu thông tin thuốc [Tên thuốc] trong Dược thư Quốc gia Việt Nam mới nhất.')}
+                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2]?')}
                 >
                   <Capsules size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Tra cứu Dược thư Quốc gia</p>
-                  <p className="text-xs text-slate-400">Kết nối dữ liệu thuốc chính thống VN</p>
-                </Card>
-
-                <Card 
-                  variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2] dựa trên Dược thư Quốc gia?')}
-                >
-                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Kiểm tra tương tác</p>
                   <p className="text-xs text-slate-400">Phát hiện các loại thuốc kỵ nhau</p>
                 </Card>
@@ -397,6 +356,16 @@ export default function App() {
                   <Activity size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Lên lịch uống thuốc</p>
                   <p className="text-xs text-slate-400">Tối ưu hóa thời gian dùng thuốc</p>
+                </Card>
+
+                <Card 
+                  variant="outline"
+                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
+                  onClick={() => setInput('Tư vấn sử dụng [Tên thuốc] an toàn cho phụ nữ có thai [Số tháng] đầu.')}
+                >
+                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
+                  <p className="text-sm font-semibold text-slate-700">An toàn thai kỳ</p>
+                  <p className="text-xs text-slate-400">Đánh giá nguy cơ theo FDA</p>
                 </Card>
               </div>
             </div>
