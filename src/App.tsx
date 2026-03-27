@@ -11,9 +11,7 @@ import {
   X,
   Activity,
   ShieldAlert,
-  Image as ImageIcon,
-  Github,
-  Info
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
@@ -183,7 +181,47 @@ export default function App() {
   };
 
   const playAudio = (base64: string) => {
-    const audio = new Audio(`data:audio/wav;base64,${base64}`);
+    // Add WAV header to raw PCM data (16-bit, 24kHz, mono)
+    const binary = atob(base64);
+    const length = binary.length;
+    const buffer = new ArrayBuffer(44 + length);
+    const view = new DataView(buffer);
+
+    // RIFF identifier
+    view.setUint32(0, 0x52494646, false);
+    // file length
+    view.setUint32(4, 36 + length, true);
+    // RIFF type
+    view.setUint32(8, 0x57415645, false);
+    // format chunk identifier
+    view.setUint32(12, 0x666d7420, false);
+    // format chunk length
+    view.setUint32(16, 16, true);
+    // sample format (1 is PCM)
+    view.setUint16(20, 1, true);
+    // channel count
+    view.setUint16(22, 1, true);
+    // sample rate
+    view.setUint32(24, 24000, true);
+    // byte rate (sample rate * block align)
+    view.setUint32(28, 48000, true);
+    // block align (channel count * bytes per sample)
+    view.setUint16(32, 2, true);
+    // bits per sample
+    view.setUint16(34, 16, true);
+    // data chunk identifier
+    view.setUint32(36, 0x64617461, false);
+    // data chunk length
+    view.setUint32(40, length, true);
+
+    // write PCM samples
+    for (let i = 0; i < length; i++) {
+      view.setUint8(44 + i, binary.charCodeAt(i));
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
     audio.play();
   };
 
@@ -263,35 +301,6 @@ export default function App() {
             )}
           </div>
         </div>
-
-        <div className="mt-auto pt-6 border-t border-sky-50 space-y-4">
-          <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600">
-              <Info size={16} />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Developer</span>
-              <span className="text-xs font-bold text-slate-700 truncate">NĐT</span>
-              <span className="text-[10px] text-slate-500 italic">Lead Developer</span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <a 
-              href="https://github.com/ndthuan12b3-a11y/PharmaAI" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[10px] font-bold text-slate-500 hover:text-sky-600 transition-colors"
-            >
-              <Github size={14} />
-              <span>GitHub Repository</span>
-            </a>
-            <div className="flex flex-col gap-1">
-              <span className="text-[9px] text-slate-400 font-medium">Version v2.0.26 (Stable)</span>
-              <span className="text-[9px] text-slate-400 font-medium">© 2026 NĐT. All rights reserved.</span>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -341,7 +350,7 @@ export default function App() {
                 <div className="inline-block p-4 bg-white rounded-3xl shadow-xl shadow-sky-100 border border-sky-50">
                   <UserMd size={40} className="text-sky-500" />
                 </div>
-                <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
+                <h2 className="text-3xl font-bold text-slate-800">Dược Sĩ AI 2026</h2>
                 <p className="text-slate-500 text-lg">Hệ thống AI kết nối trực tiếp với <b>Dược thư Quốc gia Việt Nam</b> và các nguồn dữ liệu y khoa uy tín (FDA, WHO, Bộ Y tế).</p>
               </div>
 
@@ -410,7 +419,7 @@ export default function App() {
               <div className="flex justify-start animate-fadeIn">
                 <div className="chat-bubble-ai border border-sky-100 px-5 py-4 rounded-3xl shadow-md flex items-center gap-3">
                   <Loader2 size={18} className="text-sky-600 animate-spin" />
-                  <span className="text-sm font-medium text-slate-600">AI đang phân tích dữ liệu lâm sàng...</span>
+                  <span className="text-sm font-medium text-slate-600">đang tra cứu dữ liệu tham khảo chuẩn...</span>
                 </div>
               </div>
             )}
