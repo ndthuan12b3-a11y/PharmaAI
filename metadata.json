@@ -1,0 +1,8 @@
+{
+  "name": "Dược Sĩ Lâm Sàng AI",
+  "description": "Hệ thống phân tích đơn thuốc thông minh và tư vấn dược lâm sàng chuyên sâu dựa trên hồ sơ bệnh nhân.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
