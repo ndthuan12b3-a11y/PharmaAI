@@ -181,7 +181,47 @@ export default function App() {
   };
 
   const playAudio = (base64: string) => {
-    const audio = new Audio(`data:audio/wav;base64,${base64}`);
+    // Add WAV header to raw PCM data (16-bit, 24kHz, mono)
+    const binary = atob(base64);
+    const length = binary.length;
+    const buffer = new ArrayBuffer(44 + length);
+    const view = new DataView(buffer);
+
+    // RIFF identifier
+    view.setUint32(0, 0x52494646, false);
+    // file length
+    view.setUint32(4, 36 + length, true);
+    // RIFF type
+    view.setUint32(8, 0x57415645, false);
+    // format chunk identifier
+    view.setUint32(12, 0x666d7420, false);
+    // format chunk length
+    view.setUint32(16, 16, true);
+    // sample format (1 is PCM)
+    view.setUint16(20, 1, true);
+    // channel count
+    view.setUint16(22, 1, true);
+    // sample rate
+    view.setUint32(24, 24000, true);
+    // byte rate (sample rate * block align)
+    view.setUint32(28, 48000, true);
+    // block align (channel count * bytes per sample)
+    view.setUint16(32, 2, true);
+    // bits per sample
+    view.setUint16(34, 16, true);
+    // data chunk identifier
+    view.setUint32(36, 0x64617461, false);
+    // data chunk length
+    view.setUint32(40, length, true);
+
+    // write PCM samples
+    for (let i = 0; i < length; i++) {
+      view.setUint8(44 + i, binary.charCodeAt(i));
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
     audio.play();
   };
 
@@ -310,17 +350,27 @@ export default function App() {
                 <div className="inline-block p-4 bg-white rounded-3xl shadow-xl shadow-sky-100 border border-sky-50">
                   <UserMd size={40} className="text-sky-500" />
                 </div>
-                <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
-                <p className="text-slate-500 text-lg">Cung cấp thông tin thuốc chính xác dựa trên bằng chứng y khoa hiện đại nhất.</p>
+                <h2 className="text-3xl font-bold text-slate-800">Dược Sĩ AI 2026</h2>
+                <p className="text-slate-500 text-lg">Hệ thống AI kết nối trực tiếp với <b>Dược thư Quốc gia Việt Nam</b> và các nguồn dữ liệu y khoa uy tín (FDA, WHO, Bộ Y tế).</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card 
                   variant="outline"
                   className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2]?')}
+                  onClick={() => setInput('Tra cứu thông tin thuốc [Tên thuốc] trong Dược thư Quốc gia Việt Nam mới nhất.')}
                 >
                   <Capsules size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
+                  <p className="text-sm font-semibold text-slate-700">Tra cứu Dược thư Quốc gia</p>
+                  <p className="text-xs text-slate-400">Kết nối dữ liệu thuốc chính thống VN</p>
+                </Card>
+
+                <Card 
+                  variant="outline"
+                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
+                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2] dựa trên Dược thư Quốc gia?')}
+                >
+                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Kiểm tra tương tác</p>
                   <p className="text-xs text-slate-400">Phát hiện các loại thuốc kỵ nhau</p>
                 </Card>
@@ -357,16 +407,6 @@ export default function App() {
                   <p className="text-sm font-semibold text-slate-700">Lên lịch uống thuốc</p>
                   <p className="text-xs text-slate-400">Tối ưu hóa thời gian dùng thuốc</p>
                 </Card>
-
-                <Card 
-                  variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Tư vấn sử dụng [Tên thuốc] an toàn cho phụ nữ có thai [Số tháng] đầu.')}
-                >
-                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">An toàn thai kỳ</p>
-                  <p className="text-xs text-slate-400">Đánh giá nguy cơ theo FDA</p>
-                </Card>
               </div>
             </div>
           )}
@@ -379,7 +419,7 @@ export default function App() {
               <div className="flex justify-start animate-fadeIn">
                 <div className="chat-bubble-ai border border-sky-100 px-5 py-4 rounded-3xl shadow-md flex items-center gap-3">
                   <Loader2 size={18} className="text-sky-600 animate-spin" />
-                  <span className="text-sm font-medium text-slate-600">AI đang phân tích dữ liệu lâm sàng...</span>
+                  <span className="text-sm font-medium text-slate-600">đang tra cứu dữ liệu tham khảo chuẩn...</span>
                 </div>
               </div>
             )}
