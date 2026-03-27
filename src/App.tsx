@@ -336,7 +336,7 @@ export default function App() {
             <div className="flex flex-col">
               <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI </span>
               <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng TƯ VẤN(NĐT) 
+                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng TƯ VẤN (NĐT) 
               </span>
             </div>
           </div>
