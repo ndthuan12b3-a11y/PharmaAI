@@ -311,26 +311,16 @@ export default function App() {
                   <UserMd size={40} className="text-sky-500" />
                 </div>
                 <h2 className="text-3xl font-bold text-slate-800">Dược sĩ Lâm sàng AI 2026</h2>
-                <p className="text-slate-500 text-lg">Hệ thống AI kết nối trực tiếp với <b>Dược thư Quốc gia Việt Nam</b> và các nguồn dữ liệu y khoa uy tín (FDA, WHO, Bộ Y tế).</p>
+                <p className="text-slate-500 text-lg">Cung cấp thông tin thuốc chính xác dựa trên bằng chứng y khoa hiện đại nhất.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card 
                   variant="outline"
                   className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Tra cứu thông tin thuốc [Tên thuốc] trong Dược thư Quốc gia Việt Nam mới nhất.')}
+                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2]?')}
                 >
                   <Capsules size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-sm font-semibold text-slate-700">Tra cứu Dược thư Quốc gia</p>
-                  <p className="text-xs text-slate-400">Kết nối dữ liệu thuốc chính thống VN</p>
-                </Card>
-
-                <Card 
-                  variant="outline"
-                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
-                  onClick={() => setInput('Phân tích tương tác giữa [Tên thuốc 1] và [Tên thuốc 2] dựa trên Dược thư Quốc gia?')}
-                >
-                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Kiểm tra tương tác</p>
                   <p className="text-xs text-slate-400">Phát hiện các loại thuốc kỵ nhau</p>
                 </Card>
@@ -366,6 +356,16 @@ export default function App() {
                   <Activity size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
                   <p className="text-sm font-semibold text-slate-700">Lên lịch uống thuốc</p>
                   <p className="text-xs text-slate-400">Tối ưu hóa thời gian dùng thuốc</p>
+                </Card>
+
+                <Card 
+                  variant="outline"
+                  className="cursor-pointer group hover:border-sky-300 hover:bg-sky-50/50 transition-all"
+                  onClick={() => setInput('Tư vấn sử dụng [Tên thuốc] an toàn cho phụ nữ có thai [Số tháng] đầu.')}
+                >
+                  <ShieldAlert size={20} className="text-sky-500 mb-2 group-hover:scale-110 transition" />
+                  <p className="text-sm font-semibold text-slate-700">An toàn thai kỳ</p>
+                  <p className="text-xs text-slate-400">Đánh giá nguy cơ theo FDA</p>
                 </Card>
               </div>
             </div>
