@@ -44,53 +44,42 @@ CẤU TRÚC PHẢN HỒI CHUẨN:
 ### 💡 LỜI KHUYÊN DƯỢC SĨ
 ### 🔗 NGUỒN THAM KHẢO XÁC THỰC`;
 
-// ============================================================================
-// 2. TYPES & INTERFACES
-// ============================================================================
-
 declare const __GEMINI_API_KEY__: string | undefined;
 
-export interface AnalysisResult {
-  text: string;
-  sources: string[];
-}
-
-export class MedicalAIError extends Error {
-  constructor(message: string, public code: string) {
-    super(message);
-    this.name = "MedicalAIError";
-  }
-}
-
 // ============================================================================
-// 3. UTILITY FUNCTIONS & CACHING
+// 2. BỘ NHỚ ĐỆM & TIỆN ÍCH (CACHING & UTILS)
 // ============================================================================
 
-const analysisCache = new Map<string, AnalysisResult>();
+// Cache bây giờ lưu trực tiếp String để tương thích 100% với Frontend của bạn
+const analysisCache = new Map<string, string>();
 
-const getApiKey = (): string => {
+function getApiKey(): string {
   try {
     if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__) {
       return __GEMINI_API_KEY__;
     }
   } catch (e) {}
   
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new MedicalAIError("Hệ thống thiếu API Key.", "MISSING_API_KEY");
+  const key = import.meta.env.VITE_GEMINI_API_KEY || "";
+  if (!key) throw new Error("MISSING_API_KEY");
   return key;
-};
+}
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = () => reject(new MedicalAIError("Không thể đọc file ảnh.", "FILE_READ_ERROR"));
+    reader.onerror = () => reject(new Error("Không thể đọc file ảnh."));
   });
 };
 
+// Hàm làm sạch văn bản an toàn
 const sanitizeTextForTTS = (text: string): string => {
-  return text
+  // Đảm bảo text luôn là string trước khi gọi .replace để chống sập app
+  const safeText = typeof text === 'string' ? text : String(text || "");
+  
+  return safeText
     .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') 
     .replace(/[*#]/g, '')                     
     .replace(/\|/g, '. ')                     
@@ -100,14 +89,14 @@ const sanitizeTextForTTS = (text: string): string => {
 };
 
 // ============================================================================
-// 4. MAIN SERVICES
+// 3. MAIN SERVICES (TƯƠNG THÍCH 100% VỚI CODE CŨ)
 // ============================================================================
 
 export async function analyzePrescription(
   imageFile: File | null, 
   text: string, 
   patientProfile: string
-): Promise<AnalysisResult> {
+): Promise<string> {
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
 
@@ -116,13 +105,14 @@ export async function analyzePrescription(
     base64Data = await fileToBase64(imageFile);
   }
 
-  const cacheKey = `${text.length}_${base64Data.length}_${patientProfile.length}`;
+  // Khóa Cache
+  const cacheKey = `${(text || "").length}_${base64Data.length}_${(patientProfile || "").length}`;
   if (analysisCache.has(cacheKey)) {
-    return analysisCache.get(cacheKey)!;
+    return analysisCache.get(cacheKey)!; // Trả về text luôn
   }
 
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE: ${patientProfile}]\n\n` : "";
-  const prompt = `${profileContext}YÊU CẦU: "${text || "Phân tích đơn thuốc trong ảnh."}"`;
+  const prompt = `${profileContext}YÊU CẦU: "${text || "Hãy bóc tách đơn thuốc trong ảnh và phân tích chi tiết giúp tôi."}"`;
 
   const parts: any[] = [{ text: prompt }];
   if (base64Data) {
@@ -138,44 +128,40 @@ export async function analyzePrescription(
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: AI_CONFIG.TEMPERATURE,
-        // Đã gỡ bỏ tools: [{ googleSearch: {} }] để tránh lỗi Quota trên bản Free
       },
     });
 
     if (!response.text) {
-      throw new MedicalAIError("AI không thể phân tích, kết quả rỗng.", "EMPTY_RESPONSE");
+      throw new Error("AI returned an empty response.");
     }
 
-    const result: AnalysisResult = {
-      text: response.text,
-      sources: [], // Trả về mảng rỗng vì không dùng công cụ Search
-    };
+    // Lưu vào cache
+    analysisCache.set(cacheKey, response.text);
 
-    analysisCache.set(cacheKey, result);
-
-    return result;
+    // Trả về duy nhất 1 chuỗi String như code gốc của bạn
+    return response.text;
 
   } catch (error: any) {
     console.error("Gemini API Error Detail:", error);
     
+    // Bắt lỗi Quota thân thiện
     const errorMessage = error.message?.toLowerCase() || "";
     if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
-      throw new MedicalAIError(
-        "Đã hết hạn mức sử dụng AI tạm thời. Hệ thống đang quá tải, vui lòng thử lại sau vài phút.", 
-        "QUOTA_EXCEEDED"
-      );
+      throw new Error("Lỗi từ AI: Đã hết hạn mức sử dụng tạm thời. Vui lòng thử lại sau vài phút.");
     }
 
-    if (error instanceof MedicalAIError) throw error;
-    throw new MedicalAIError(`Lỗi hệ thống: ${error.message}`, "API_CONNECTION_FAILED");
+    throw new Error(`Lỗi từ AI: ${error.message || "Không thể kết nối đến Gemini API"}`);
   }
 }
 
 export async function generateSpeech(text: string): Promise<string | null> {
   const apiKey = getApiKey();
+  if (!apiKey) return null;
+
   const ai = new GoogleGenAI({ apiKey });
   
   const pharmacistIntro = "Dưới đây là tư vấn từ trợ lý dược sĩ: ";
+  // Hàm sanitizeTextForTTS giờ đã có cơ chế tự kiểm tra kiểu dữ liệu an toàn
   const cleanText = pharmacistIntro + sanitizeTextForTTS(text);
 
   try {
@@ -193,7 +179,7 @@ export async function generateSpeech(text: string): Promise<string | null> {
     });
 
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
-  } catch (error: any) {
+  } catch (error) {
     console.error("TTS Error:", error);
     return null; 
   }
