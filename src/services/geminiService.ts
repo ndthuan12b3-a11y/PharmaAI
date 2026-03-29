@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // ============================================================================
-// 1. CẤU HÌNH & HẰNG SỐ (CONFIG & CONSTANTS)
+// 1. CẤU HÌNH & HẰNG SỐ
 // ============================================================================
 
 const AI_CONFIG = {
@@ -9,7 +9,7 @@ const AI_CONFIG = {
     ANALYSIS: "gemini-3-flash-preview", 
     TTS: "gemini-2.5-flash-preview-tts" 
   },
-  TEMPERATURE: 0.1, // Giữ độ chính xác cao nhất cho Y tế
+  TEMPERATURE: 0.1, 
   MAX_TTS_LENGTH: 5000,
 };
 
@@ -66,7 +66,6 @@ export class MedicalAIError extends Error {
 // 3. UTILITY FUNCTIONS & CACHING
 // ============================================================================
 
-// Bộ nhớ đệm giúp tiết kiệm API Quota (Lưu kết quả phân tích trùng lặp)
 const analysisCache = new Map<string, AnalysisResult>();
 
 const getApiKey = (): string => {
@@ -92,11 +91,11 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 const sanitizeTextForTTS = (text: string): string => {
   return text
-    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Xóa link markdown
-    .replace(/[*#]/g, '')                     // Xóa ký tự in đậm, heading
-    .replace(/\|/g, '. ')                     // Chuyển cột bảng thành ngắt nghỉ
-    .replace(/---+/g, '')                     // Xóa viền bảng
-    .replace(/\n\s*\n/g, '. ')                // Ngắt câu ở dòng trống
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') 
+    .replace(/[*#]/g, '')                     
+    .replace(/\|/g, '. ')                     
+    .replace(/---+/g, '')                     
+    .replace(/\n\s*\n/g, '. ')                
     .substring(0, AI_CONFIG.MAX_TTS_LENGTH);
 };
 
@@ -117,16 +116,13 @@ export async function analyzePrescription(
     base64Data = await fileToBase64(imageFile);
   }
 
-  // TẠO KHÓA CACHE: Nếu cùng ảnh, cùng câu hỏi, cùng hồ sơ -> Lấy từ bộ nhớ
   const cacheKey = `${text.length}_${base64Data.length}_${patientProfile.length}`;
   if (analysisCache.has(cacheKey)) {
-    console.log("⚡ Đã tải kết quả từ Cache, không gọi API.");
     return analysisCache.get(cacheKey)!;
   }
 
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE: ${patientProfile}]\n\n` : "";
-  const prompt = `${profileContext}YÊU CẦU: "${text || "Phân tích đơn thuốc trong ảnh."}"
-  \nLỆNH HỆ THỐNG: Sử dụng Google Search Tool để tra cứu Dược thư Quốc gia hoặc FDA nếu gặp biệt dược lạ hoặc cần đối chiếu tương tác thuốc.`;
+  const prompt = `${profileContext}YÊU CẦU: "${text || "Phân tích đơn thuốc trong ảnh."}"`;
 
   const parts: any[] = [{ text: prompt }];
   if (base64Data) {
@@ -142,7 +138,7 @@ export async function analyzePrescription(
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: AI_CONFIG.TEMPERATURE,
-        tools: [{ googleSearch: {} }] // Kích hoạt công cụ tra cứu
+        // Đã gỡ bỏ tools: [{ googleSearch: {} }] để tránh lỗi Quota trên bản Free
       },
     });
 
@@ -150,21 +146,11 @@ export async function analyzePrescription(
       throw new MedicalAIError("AI không thể phân tích, kết quả rỗng.", "EMPTY_RESPONSE");
     }
 
-    // Trích xuất link nguồn tra cứu
-    const sources: string[] = [];
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    groundingChunks.forEach((chunk: any) => {
-      if (chunk.web?.uri && !sources.includes(chunk.web.uri)) {
-        sources.push(chunk.web.uri);
-      }
-    });
-
     const result: AnalysisResult = {
       text: response.text,
-      sources: sources,
+      sources: [], // Trả về mảng rỗng vì không dùng công cụ Search
     };
 
-    // Lưu vào cache để dùng cho lần sau
     analysisCache.set(cacheKey, result);
 
     return result;
@@ -172,7 +158,6 @@ export async function analyzePrescription(
   } catch (error: any) {
     console.error("Gemini API Error Detail:", error);
     
-    // BẮT LỖI QUOTA (429) HOẶC EXHAUSTED
     const errorMessage = error.message?.toLowerCase() || "";
     if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
       throw new MedicalAIError(
@@ -210,7 +195,6 @@ export async function generateSpeech(text: string): Promise<string | null> {
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
   } catch (error: any) {
     console.error("TTS Error:", error);
-    // Nếu hết Quota khi đọc giọng nói, chỉ log ra chứ không làm sập ứng dụng (vẫn hiện text bình thường)
     return null; 
   }
 }
