@@ -6,10 +6,10 @@ import { GoogleGenAI, Modality } from "@google/genai";
 
 const AI_CONFIG = {
   MODELS: {
-    ANALYSIS: "gemini-3-flash-preview", // Model phân tích & Search
-    TTS: "gemini-2.5-flash-preview-tts" // Model Giọng nói
+    ANALYSIS: "gemini-3-flash-preview", 
+    TTS: "gemini-2.5-flash-preview-tts" 
   },
-  TEMPERATURE: 0.1, // Độ sáng tạo thấp -> Độ chính xác cao
+  TEMPERATURE: 0.1, // Giữ độ chính xác cao nhất cho Y tế
   MAX_TTS_LENGTH: 5000,
 };
 
@@ -22,15 +22,15 @@ NGUỒN DỮ LIỆU ƯU TIÊN (BẮT BUỘC):
 3. Cơ sở dữ liệu FDA, WHO, Medscape.
 
 TƯ DUY LÂM SÀNG (CLINICAL REASONING 2026):
-1. Đánh giá sự phù hợp của thuốc với độ tuổi, cân nặng, chức năng gan/thận, nhóm máu.
+1. Đánh giá sự phù hợp của thuốc với độ tuổi, cân nặng, chức năng gan/thận.
 2. Phát hiện tương tác thuốc (Drug-Drug, Drug-Food, Drug-Disease).
-3. Cảnh báo các tác dụng phụ hiếm gặp nhưng nguy hiểm (Black Box Warnings).
+3. Cảnh báo các tác dụng phụ hiếm gặp (Black Box Warnings).
 
-QUY TẮC TRÌNH BÀY (BẮT BUỘC SỬ DỤNG BẢNG MÀKHÔNG LÀM PHỨC TẠP HÓA):
+QUY TẮC TRÌNH BÀY (BẮT BUỘC SỬ DỤNG BẢNG):
+- LUÔN LUÔN dùng Markdown. Trình bày rõ ràng, mạch lạc.
 - Bắt buộc có 1 dòng trống TRƯỚC và SAU mỗi bảng.
-- Định dạng Markdown rõ ràng.
 
-CẤU TRÚC BÁO CÁO:
+CẤU TRÚC PHẢN HỒI CHUẨN:
 ### 🏥 TÓM TẮT LÂM SÀNG
 ### 💊 CHI TIẾT ĐƠN THUỐC & CƠ CHẾ
 | STT | Tên Thuốc (Hoạt chất) | Hàm lượng | Liều dùng & Cách dùng | Cơ chế & Dược động học |
@@ -45,18 +45,17 @@ CẤU TRÚC BÁO CÁO:
 ### 🔗 NGUỒN THAM KHẢO XÁC THỰC`;
 
 // ============================================================================
-// 2. TYPES & INTERFACES (ĐỊNH NGHĨA KIỂU DỮ LIỆU)
+// 2. TYPES & INTERFACES
 // ============================================================================
 
 declare const __GEMINI_API_KEY__: string | undefined;
 
-interface AnalysisResult {
+export interface AnalysisResult {
   text: string;
-  sources: string[]; // Chứa các link URL mà AI đã tra cứu
+  sources: string[];
 }
 
-// Custom Error Classes để Frontend bắt lỗi chính xác
-class MedicalAIError extends Error {
+export class MedicalAIError extends Error {
   constructor(message: string, public code: string) {
     super(message);
     this.name = "MedicalAIError";
@@ -64,50 +63,47 @@ class MedicalAIError extends Error {
 }
 
 // ============================================================================
-// 3. UTILITY FUNCTIONS (HÀM TIỆN ÍCH HỖ TRỢ)
+// 3. UTILITY FUNCTIONS & CACHING
 // ============================================================================
+
+// Bộ nhớ đệm giúp tiết kiệm API Quota (Lưu kết quả phân tích trùng lặp)
+const analysisCache = new Map<string, AnalysisResult>();
 
 const getApiKey = (): string => {
   try {
-    if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__) return __GEMINI_API_KEY__;
+    if (typeof __GEMINI_API_KEY__ !== 'undefined' && __GEMINI_API_KEY__) {
+      return __GEMINI_API_KEY__;
+    }
   } catch (e) {}
+  
   const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) throw new MedicalAIError("Thiếu API Key cho hệ thống AI.", "MISSING_API_KEY");
+  if (!key) throw new MedicalAIError("Hệ thống thiếu API Key.", "MISSING_API_KEY");
   return key;
 };
 
-/** Chuyển đổi File sang Base64 an toàn */
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = (error) => reject(new MedicalAIError("Không thể đọc file ảnh.", "FILE_READ_ERROR"));
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = () => reject(new MedicalAIError("Không thể đọc file ảnh.", "FILE_READ_ERROR"));
   });
 };
 
-/** Dọn dẹp văn bản Markdown để TTS đọc mượt mà như người thật */
 const sanitizeTextForTTS = (text: string): string => {
   return text
-    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Xóa link markdown [text](url) -> giữ lại text
-    .replace(/[*#]/g, '')                     // Xóa các ký tự in đậm, heading
-    .replace(/\|/g, '. ')                     // Chuyển cột bảng thành dấu chấm để AI ngắt nghỉ
-    .replace(/---+/g, '')                     // Xóa các dòng kẻ gạch của bảng Markdown
-    .replace(/\n\s*\n/g, '. ')                // Chuyển dòng trống thành dấu chấm
-    .substring(0, AI_CONFIG.MAX_TTS_LENGTH);  // Cắt chuỗi an toàn
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Xóa link markdown
+    .replace(/[*#]/g, '')                     // Xóa ký tự in đậm, heading
+    .replace(/\|/g, '. ')                     // Chuyển cột bảng thành ngắt nghỉ
+    .replace(/---+/g, '')                     // Xóa viền bảng
+    .replace(/\n\s*\n/g, '. ')                // Ngắt câu ở dòng trống
+    .substring(0, AI_CONFIG.MAX_TTS_LENGTH);
 };
 
 // ============================================================================
-// 4. MAIN SERVICES (DỊCH VỤ CỐT LÕI)
+// 4. MAIN SERVICES
 // ============================================================================
 
-/**
- * Phân tích đơn thuốc và trích xuất nguồn tra cứu
- */
 export async function analyzePrescription(
   imageFile: File | null, 
   text: string, 
@@ -116,65 +112,80 @@ export async function analyzePrescription(
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
 
+  let base64Data = "";
+  if (imageFile) {
+    base64Data = await fileToBase64(imageFile);
+  }
+
+  // TẠO KHÓA CACHE: Nếu cùng ảnh, cùng câu hỏi, cùng hồ sơ -> Lấy từ bộ nhớ
+  const cacheKey = `${text.length}_${base64Data.length}_${patientProfile.length}`;
+  if (analysisCache.has(cacheKey)) {
+    console.log("⚡ Đã tải kết quả từ Cache, không gọi API.");
+    return analysisCache.get(cacheKey)!;
+  }
+
   const profileContext = patientProfile ? `[HỒ SƠ SỨC KHỎE: ${patientProfile}]\n\n` : "";
   const prompt = `${profileContext}YÊU CẦU: "${text || "Phân tích đơn thuốc trong ảnh."}"
-  \nLỆNH HỆ THỐNG: Sử dụng Google Search Tool để tra cứu Dược thư Quốc gia hoặc FDA nếu gặp thuốc lạ.`;
+  \nLỆNH HỆ THỐNG: Sử dụng Google Search Tool để tra cứu Dược thư Quốc gia hoặc FDA nếu gặp biệt dược lạ hoặc cần đối chiếu tương tác thuốc.`;
 
-  // Type-safe array parts
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
-    { text: prompt }
-  ];
-
-  if (imageFile) {
-    const base64Data = await fileToBase64(imageFile);
+  const parts: any[] = [{ text: prompt }];
+  if (base64Data) {
     parts.push({
-      inlineData: {
-        mimeType: imageFile.type,
-        data: base64Data,
-      },
+      inlineData: { mimeType: imageFile!.type, data: base64Data },
     });
   }
 
   try {
     const response = await ai.models.generateContent({
       model: AI_CONFIG.MODELS.ANALYSIS,
-      contents: [{ role: "user", parts: parts as any }], // Ép kiểu an toàn nội bộ SDK
+      contents: [{ role: "user", parts }],
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         temperature: AI_CONFIG.TEMPERATURE,
-        tools: [{ googleSearch: {} }],
+        tools: [{ googleSearch: {} }] // Kích hoạt công cụ tra cứu
       },
     });
 
     if (!response.text) {
-      throw new MedicalAIError("AI trả về kết quả rỗng.", "EMPTY_RESPONSE");
+      throw new MedicalAIError("AI không thể phân tích, kết quả rỗng.", "EMPTY_RESPONSE");
     }
 
-    // NÂNG CẤP PRO: Trích xuất các URL Grounding (Nguồn tra cứu thực tế từ Search)
+    // Trích xuất link nguồn tra cứu
     const sources: string[] = [];
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    
     groundingChunks.forEach((chunk: any) => {
       if (chunk.web?.uri && !sources.includes(chunk.web.uri)) {
         sources.push(chunk.web.uri);
       }
     });
 
-    return {
+    const result: AnalysisResult = {
       text: response.text,
-      sources: sources, // Trả về danh sách link để Frontend render dạng "Click để xem nguồn"
+      sources: sources,
     };
 
+    // Lưu vào cache để dùng cho lần sau
+    analysisCache.set(cacheKey, result);
+
+    return result;
+
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini API Error Detail:", error);
+    
+    // BẮT LỖI QUOTA (429) HOẶC EXHAUSTED
+    const errorMessage = error.message?.toLowerCase() || "";
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+      throw new MedicalAIError(
+        "Đã hết hạn mức sử dụng AI tạm thời. Hệ thống đang quá tải, vui lòng thử lại sau vài phút.", 
+        "QUOTA_EXCEEDED"
+      );
+    }
+
     if (error instanceof MedicalAIError) throw error;
-    throw new MedicalAIError(`Lỗi kết nối AI: ${error.message}`, "API_CONNECTION_FAILED");
+    throw new MedicalAIError(`Lỗi hệ thống: ${error.message}`, "API_CONNECTION_FAILED");
   }
 }
 
-/**
- * Chuyển văn bản thành giọng nói Dược sĩ
- */
 export async function generateSpeech(text: string): Promise<string | null> {
   const apiKey = getApiKey();
   const ai = new GoogleGenAI({ apiKey });
@@ -197,9 +208,9 @@ export async function generateSpeech(text: string): Promise<string | null> {
     });
 
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
-  } catch (error) {
+  } catch (error: any) {
     console.error("TTS Error:", error);
-    // Trả về null thay vì throw error để UI không bị crash nếu chỉ lỗi giọng đọc
+    // Nếu hết Quota khi đọc giọng nói, chỉ log ra chứ không làm sập ứng dụng (vẫn hiện text bình thường)
     return null; 
   }
 }
