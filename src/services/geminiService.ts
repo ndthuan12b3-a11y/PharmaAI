@@ -120,8 +120,8 @@ export async function generateSpeech(text: string) {
                  
   const ai = new GoogleGenAI({ apiKey });
   
-  const pharmacistIntro = "Chào bạn, tôi là Dược sĩ AI. Dựa trên hồ sơ sức khỏe và Dược thư Quốc gia, tôi xin tư vấn như sau: ";
-  const cleanText = pharmacistIntro + text.replace(/[*#|]/g, '').slice(0, 1000);
+  const pharmacistIntro = ": ";
+  const cleanText = pharmacistIntro + text.replace(/[*#|]/g, '').slice(0, 100000);
 
   try {
     const response = await ai.models.generateContent({
