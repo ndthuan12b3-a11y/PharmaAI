@@ -60,7 +60,8 @@ function getApiKey(): string {
     }
   } catch (e) {}
   
-  const key = import.meta.env.VITE_GEMINI_API_KEY || "";
+  // Ưu tiên process.env.GEMINI_API_KEY theo hướng dẫn của platform
+  const key = (process.env as any).GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
   if (!key) throw new Error("MISSING_API_KEY");
   return key;
 }
@@ -193,10 +194,7 @@ export async function searchDrugNameByRegistrationNumber(regNumber: string): Pro
 
   const ai = new GoogleGenAI({ apiKey });
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Tìm thông tin chi tiết của thuốc có số đăng ký (SĐK) hoặc mã số là "${regNumber}" tại Việt Nam. 
+  const prompt = `Tìm thông tin chi tiết của thuốc có số đăng ký (SĐK) hoặc mã số là "${regNumber}" tại Việt Nam. 
       Hãy trả về kết quả dưới dạng JSON với các trường sau:
       - drugName: Tên thuốc (viết hoa, ví dụ: SCANAX 500MG)
       - strength: Hàm lượng (ví dụ: 500mg, 875mg/125mg,...)
@@ -206,7 +204,13 @@ export async function searchDrugNameByRegistrationNumber(regNumber: string): Pro
       - activeIngredient: Hoạt chất chính
       
       Nếu không tìm thấy thông tin trên Google, hãy trả về chính xác chuỗi "Không tìm thấy thông tin".
-      Lưu ý: Chỉ trả về JSON, không kèm giải thích.`,
+      Lưu ý: Chỉ trả về JSON, không kèm giải thích.`;
+
+  try {
+    // Thử với Google Search Grounding trước
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -215,9 +219,23 @@ export async function searchDrugNameByRegistrationNumber(regNumber: string): Pro
 
     const text = response.text?.trim() || "Không tìm thấy thông tin";
     return text;
-  } catch (error) {
-    console.error("Search Drug Error:", error);
-    return "Lỗi khi tìm kiếm thông tin";
+  } catch (error: any) {
+    console.warn("Google Search failed, falling back to normal search:", error);
+    
+    try {
+      // Fallback: Thử không có Google Search nếu bị lỗi (VD: do API Key không hỗ trợ Search)
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+      return response.text?.trim() || "Không tìm thấy thông tin";
+    } catch (fallbackError: any) {
+      console.error("Search Drug Error (Fallback):", fallbackError);
+      return `Lỗi khi tìm kiếm thông tin: ${fallbackError.message || "Lỗi không xác định"}`;
+    }
   }
 }
 
