@@ -246,7 +246,7 @@ export function DrugRegistration() {
                 className="flex items-center gap-3 text-blue-600 bg-blue-50 p-4 rounded-xl border border-blue-100"
               >
                 <Loader2 className="animate-spin" size={20} />
-                <p className="font-medium">AI đang tìm kiếm tên thuốc trên Google...</p>
+                <p className="font-medium"> đang tra cứu SDK bạn chờ một chút nheee...</p>
               </motion.div>
             )}
 
@@ -306,7 +306,7 @@ export function DrugRegistration() {
                     <div className="bg-blue-600 px-6 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Pill className="text-white" size={20} />
-                        <h3 className="text-white font-bold">Bảng thông tin thuốc (AI)</h3>
+                        <h3 className="text-white font-bold">Bảng thông tin thuốc </h3>
                       </div>
                       <div className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
                         Cập nhật 2026
