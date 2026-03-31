@@ -1,7 +1,7 @@
 import React from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PlayCircle, CheckCircle2, Download, FileText } from 'lucide-react';
+import { PlayCircle, PauseCircle, CheckCircle2, Download, FileText, Loader2 } from 'lucide-react';
 import { 
   Document, 
   Packer, 
@@ -26,10 +26,15 @@ interface Message {
 
 interface ChatMessageProps {
   msg: Message;
-  playAudio: (base64: string) => void;
+  toggleAudio: (msgId: string, base64: string) => void;
+  playingMsgId: string | null;
+  onGenerateAudio: (msgId: string, text: string) => Promise<void>;
+  generatingAudioIds: Set<string>;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({ msg, playAudio }) => {
+export const ChatMessage: React.FC<ChatMessageProps> = ({ msg, toggleAudio, playingMsgId, onGenerateAudio, generatingAudioIds }) => {
+  const isPlaying = playingMsgId === msg.id;
+  const isGenerating = generatingAudioIds.has(msg.id);
   const exportToWord = async () => {
     const lines = msg.text.split('\n');
     const sections: any[] = [];
@@ -174,19 +179,27 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ msg, playAudio }) => {
           </div>
           {msg.role === 'ai' && (
             <div className="flex flex-wrap gap-2 mt-4">
-              {msg.audio && (
-                <button 
-                  onClick={() => playAudio(msg.audio!)}
-                  className="text-[10px] font-bold uppercase text-sky-600 bg-sky-50 px-3 py-1.5 rounded-full hover:bg-sky-100 transition inline-flex items-center shadow-sm"
-                >
-                  <PlayCircle size={14} className="mr-1" /> Nghe tư vấn
-                </button>
-              )}
+              <button 
+                onClick={() => msg.audio ? toggleAudio(msg.id, msg.audio) : onGenerateAudio(msg.id, msg.text)}
+                disabled={isGenerating && !msg.audio}
+                className={`text-[10px] font-bold uppercase px-3 py-1.5 rounded-full transition inline-flex items-center shadow-sm disabled:opacity-50 ${
+                  isPlaying ? 'text-red-600 bg-red-50 hover:bg-red-100' : 'text-sky-600 bg-sky-50 hover:bg-sky-100'
+                }`}
+              >
+                {isGenerating && !msg.audio ? (
+                  <Loader2 size={14} className="mr-1 animate-spin" />
+                ) : isPlaying ? (
+                  <PauseCircle size={14} className="mr-1" />
+                ) : (
+                  <PlayCircle size={14} className="mr-1" />
+                )}
+                {isPlaying ? 'Dừng nghe' : 'Nghe tư vấn'}
+              </button>
               <button 
                 onClick={exportToWord}
                 className="text-[10px] font-bold uppercase text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition inline-flex items-center shadow-sm"
               >
-                <FileText size={14} className="mr-1" /> Xuất File Word (VIP)
+                <FileText size={14} className="mr-1" /> Xuất File Word
               </button>
             </div>
           )}

@@ -11,7 +11,9 @@ import {
   X,
   Activity,
   ShieldAlert,
-  Image as ImageIcon
+  AlertTriangle,
+  Image as ImageIcon,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzePrescription, generateSpeech } from './services/geminiService';
@@ -23,6 +25,7 @@ import { Card } from './components/Card';
 import { PatientProfileModal, PatientProfile } from './components/PatientProfileModal';
 import { ChatInput } from './components/ChatInput';
 import { ChatMessage } from './components/ChatMessage';
+import { DrugRegistration } from './components/DrugRegistration';
 
 interface Message {
   id: string;
@@ -32,11 +35,14 @@ interface Message {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'chat' | 'drugRegistration'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [generatingAudioIds, setGeneratingAudioIds] = useState<Set<string>>(new Set());
+  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -129,11 +135,6 @@ export default function App() {
       const response = await analyzePrescription(currentImage, text, profileString);
       const aiMsg: Message = { id: (Date.now() + 1).toString(), role: 'ai', text: response || "Không có phản hồi từ AI." };
       
-      const audioBase64 = await generateSpeech(aiMsg.text);
-      if (audioBase64) {
-        aiMsg.audio = audioBase64;
-      }
-
       setMessages(prev => [...prev, aiMsg]);
     } catch (error: any) {
       console.error("Full Error Object:", error);
@@ -161,6 +162,38 @@ export default function App() {
     }
   };
 
+  const handleGenerateAudio = async (msgId: string, text: string) => {
+    if (generatingAudioIds.has(msgId)) return;
+
+    const existingMsg = messages.find(m => m.id === msgId);
+    if (existingMsg?.audio) {
+      toggleAudio(msgId, existingMsg.audio);
+      return;
+    }
+
+    setGeneratingAudioIds(prev => new Set(prev).add(msgId));
+    try {
+      const audioBase64 = await generateSpeech(text);
+      if (audioBase64) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, audio: audioBase64 } : m));
+        toggleAudio(msgId, audioBase64);
+      }
+    } catch (error: any) {
+      console.error("Manual TTS Error:", error);
+      if (error.message === 'MISSING_API_KEY') {
+        alert("Lỗi: Chưa có API Key. Vui lòng kiểm tra cài đặt hệ thống.");
+      } else {
+        alert(error.message || "Lỗi khi tạo giọng nói.");
+      }
+    } finally {
+      setGeneratingAudioIds(prev => {
+        const next = new Set(prev);
+        next.delete(msgId);
+        return next;
+      });
+    }
+  };
+
   const startListening = () => {
     if (recognitionRef.current) {
       setIsListening(true);
@@ -180,49 +213,93 @@ export default function App() {
     setIsProfileOpen(false);
   };
 
-  const playAudio = (base64: string) => {
-    // Add WAV header to raw PCM data (16-bit, 24kHz, mono)
-    const binary = atob(base64);
-    const length = binary.length;
-    const buffer = new ArrayBuffer(44 + length);
-    const view = new DataView(buffer);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioMsgIdRef = useRef<string | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
 
-    // RIFF identifier
-    view.setUint32(0, 0x52494646, false);
-    // file length
-    view.setUint32(4, 36 + length, true);
-    // RIFF type
-    view.setUint32(8, 0x57415645, false);
-    // format chunk identifier
-    view.setUint32(12, 0x666d7420, false);
-    // format chunk length
-    view.setUint32(16, 16, true);
-    // sample format (1 is PCM)
-    view.setUint16(20, 1, true);
-    // channel count
-    view.setUint16(22, 1, true);
-    // sample rate
-    view.setUint32(24, 24000, true);
-    // byte rate (sample rate * block align)
-    view.setUint32(28, 48000, true);
-    // block align (channel count * bytes per sample)
-    view.setUint16(32, 2, true);
-    // bits per sample
-    view.setUint16(34, 16, true);
-    // data chunk identifier
-    view.setUint32(36, 0x64617461, false);
-    // data chunk length
-    view.setUint32(40, length, true);
+  const toggleAudio = (msgId: string, base64: string) => {
+    try {
+      // If clicking the same message that is already loaded
+      if (currentAudioRef.current && currentAudioMsgIdRef.current === msgId) {
+        if (currentAudioRef.current.paused) {
+          currentAudioRef.current.play();
+        } else {
+          currentAudioRef.current.pause();
+        }
+        return;
+      }
 
-    // write PCM samples
-    for (let i = 0; i < length; i++) {
-      view.setUint8(44 + i, binary.charCodeAt(i));
+      // Stop and cleanup previous audio
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = "";
+        currentAudioRef.current = null;
+        currentAudioMsgIdRef.current = null;
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+          currentAudioUrlRef.current = null;
+        }
+      }
+
+      const binary = atob(base64);
+      const length = binary.length;
+      const buffer = new ArrayBuffer(44 + length);
+      const view = new DataView(buffer);
+
+      view.setUint32(0, 0x52494646, false);
+      view.setUint32(4, 36 + length, true);
+      view.setUint32(8, 0x57415645, false);
+      view.setUint32(12, 0x666d7420, false);
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, 24000, true);
+      view.setUint32(28, 48000, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      view.setUint32(36, 0x64617461, false);
+      view.setUint32(40, length, true);
+
+      const pcmData = new Uint8Array(buffer, 44);
+      for (let i = 0; i < length; i++) {
+        pcmData[i] = binary.charCodeAt(i);
+      }
+
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      
+      currentAudioRef.current = audio;
+      currentAudioMsgIdRef.current = msgId;
+      currentAudioUrlRef.current = url;
+      
+      audio.onplay = () => setPlayingMsgId(msgId);
+      audio.onpause = () => setPlayingMsgId(null);
+      audio.onended = () => {
+        setPlayingMsgId(null);
+        currentAudioRef.current = null;
+        currentAudioMsgIdRef.current = null;
+        URL.revokeObjectURL(url);
+        currentAudioUrlRef.current = null;
+      };
+
+      audio.onerror = () => {
+        setPlayingMsgId(null);
+        currentAudioRef.current = null;
+        currentAudioMsgIdRef.current = null;
+        alert("Lỗi khi phát âm thanh.");
+      };
+
+      audio.play().catch(err => {
+        setPlayingMsgId(null);
+        if (err.name === 'NotAllowedError') {
+          alert("Vui lòng nhấn vào trang web trước khi nghe tư vấn.");
+        }
+      });
+    } catch (error) {
+      console.error("Error processing audio:", error);
+      alert("Lỗi khi xử lý dữ liệu âm thanh.");
     }
-
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play();
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -272,11 +349,21 @@ export default function App() {
 
         <div className="space-y-3 mb-8">
           <Button 
-            onClick={() => { setMessages([]); setIsSidebarOpen(false); }}
+            onClick={() => { setActiveTab('chat'); setIsSidebarOpen(false); }}
             className="w-full"
+            variant={activeTab === 'chat' ? 'primary' : 'outline'}
             icon={Plus}
           >
             Tư vấn mới
+          </Button>
+
+          <Button 
+            onClick={() => { setActiveTab('drugRegistration'); setIsSidebarOpen(false); }}
+            variant={activeTab === 'drugRegistration' ? 'primary' : 'outline'}
+            className="w-full"
+            icon={Search}
+          >
+            Tra cứu Số đăng ký
           </Button>
 
           <Button 
@@ -287,6 +374,17 @@ export default function App() {
           >
             Hồ sơ cá nhân
           </Button>
+        </div>
+
+        <div className="bg-amber-50/50 border border-amber-100/50 rounded-xl p-3 mb-6">
+          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+            <ShieldAlert size={12} /> Chính sách tư vấn
+          </p>
+          <ul className="text-[9px] text-amber-800 space-y-1 leading-tight">
+            <li>• AI chỉ cung cấp thông tin tham khảo từ Dược thư.</li>
+            <li>• Không thay thế chẩn đoán của bác sĩ.</li>
+            <li>• Người dùng tự chịu trách nhiệm khi sử dụng thuốc.</li>
+          </ul>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 scrollbar-hide">
@@ -301,49 +399,70 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* Developer Info */}
+        <div className="mt-auto pt-6 border-t border-sky-100">
+          <div className="bg-sky-50/50 rounded-2xl p-4 border border-sky-100/50">
+            <p className="text-[10px] font-bold text-sky-400 uppercase tracking-widest mb-2">Phát triển bởi</p>
+            <p className="text-xs font-bold text-slate-700">Nguyễn Đức Thuận</p>
+            <p className="text-[10px] text-slate-500 break-all">alanwalkert2002@gmail.com</p>
+          </div>
+        </div>
       </aside>
 
       {/* Main Content */}
-      <main 
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className="flex-1 flex flex-col relative min-w-0"
-      >
-        {/* Drag Overlay */}
-        <AnimatePresence>
-          {isDragging && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-[200] bg-sky-500/20 backdrop-blur-md border-4 border-dashed border-sky-400 m-4 rounded-3xl flex flex-col items-center justify-center text-sky-700"
-            >
-              <div className="bg-white p-8 rounded-full shadow-2xl mb-4">
-                <ImageIcon size={64} className="animate-bounce" />
+      {activeTab === 'chat' ? (
+        <main 
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className="flex-1 flex flex-col relative min-w-0"
+        >
+          {/* Drag Overlay */}
+          <AnimatePresence>
+            {isDragging && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-[200] bg-sky-500/20 backdrop-blur-md border-4 border-dashed border-sky-400 m-4 rounded-3xl flex flex-col items-center justify-center text-sky-700"
+              >
+                <div className="bg-white p-8 rounded-full shadow-2xl mb-4">
+                  <ImageIcon size={64} className="animate-bounce" />
+                </div>
+                <p className="text-2xl font-bold">Thả ảnh đơn thuốc vào đây</p>
+                <p className="text-sky-600">PharmaAI sẽ tự động bóc tách dữ liệu</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* Header */}
+          <header className="h-16 flex items-center justify-between px-6 glass-panel border-b border-sky-100 z-10 sticky top-0">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+                <Menu size={20} />
+              </button>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-slate-800">Tư vấn AI</span>
+                <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng kết nối
+                </span>
               </div>
-              <p className="text-2xl font-bold">Thả ảnh đơn thuốc vào đây</p>
-              <p className="text-sky-600">PharmaAI sẽ tự động bóc tách dữ liệu</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        {/* Header */}
-        <header className="h-16 flex items-center justify-between px-6 glass-panel border-b border-sky-100 z-10 sticky top-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
-              <Menu size={20} />
-            </button>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-800">Phiên tư vấn AI </span>
-              <span className="text-[10px] text-green-500 font-semibold uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Sẵn sàng TƯ VẤN (NĐT) 
-              </span>
+            </div>
+          </header>
+
+          {/* Disclaimer Banner for Chat */}
+          <div className="px-4 md:px-8 pt-4">
+            <div className="max-w-3xl mx-auto bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-3 shadow-sm">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-amber-800 leading-tight">
+                <strong>LƯU Ý QUAN TRỌNG:</strong> Đây là hệ thống AI thử nghiệm. Mọi tư vấn chỉ mang tính chất tham khảo. 
+                Bạn <strong>PHẢI</strong> tham khảo ý kiến bác sĩ hoặc dược sĩ chuyên môn trước khi sử dụng bất kỳ loại thuốc nào.
+              </p>
             </div>
           </div>
-        </header>
 
-        {/* Chat Area */}
-        <section ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
+          {/* Chat Area */}
+          <section ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
           {messages.length === 0 && (
             <div className="max-w-2xl mx-auto mt-10 space-y-8">
               <div className="text-center space-y-4">
@@ -413,7 +532,14 @@ export default function App() {
 
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} msg={msg} playAudio={playAudio} />
+              <ChatMessage 
+                key={msg.id} 
+                msg={msg} 
+                toggleAudio={toggleAudio}
+                playingMsgId={playingMsgId}
+                onGenerateAudio={handleGenerateAudio}
+                generatingAudioIds={generatingAudioIds}
+              />
             ))}
             {isAnalyzing && (
               <div className="flex justify-start animate-fadeIn">
@@ -441,6 +567,9 @@ export default function App() {
           stopListening={stopListening}
         />
       </main>
+      ) : (
+        <DrugRegistration />
+      )}
 
       {/* Profile Modal */}
       <PatientProfileModal 

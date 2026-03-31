@@ -184,3 +184,60 @@ export async function generateSpeech(text: string): Promise<string | null> {
     return null; 
   }
 }
+
+export async function searchDrugNameByRegistrationNumber(regNumber: string): Promise<string> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("MISSING_API_KEY");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Tìm thông tin chi tiết của thuốc có số đăng ký (SĐK) hoặc mã số là "${regNumber}" tại Việt Nam. 
+      Hãy trả về kết quả dưới dạng JSON với các trường sau:
+      - drugName: Tên thuốc (viết hoa, ví dụ: SCANAX 500MG)
+      - strength: Hàm lượng (ví dụ: 500mg, 875mg/125mg,...)
+      - packaging: Quy cách đóng gói (ví dụ: Hộp 5 vỉ x 10 viên)
+      - manufacturer: Cơ sở sản xuất
+      - dosageForm: Dạng bào chế (ví dụ: Viên nén, Viên bao phim,...)
+      - activeIngredient: Hoạt chất chính
+      
+      Nếu không tìm thấy thông tin trên Google, hãy trả về chính xác chuỗi "Không tìm thấy thông tin".
+      Lưu ý: Chỉ trả về JSON, không kèm giải thích.`,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text?.trim() || "Không tìm thấy thông tin";
+    return text;
+  } catch (error) {
+    console.error("Search Drug Error:", error);
+    return "Lỗi khi tìm kiếm thông tin";
+  }
+}
+
+export async function extractRegistrationNumberFromImage(imageFile: File): Promise<string> {
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+  const base64Data = await fileToBase64(imageFile);
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        { text: "Hãy tìm và trích xuất số đăng ký thuốc (SĐK) hoặc mã số thuốc gồm 12 chữ số trong ảnh này. Chỉ trả về duy nhất chuỗi 12 chữ số đó, không kèm bất kỳ văn bản nào khác. Nếu không tìm thấy, trả về 'NONE'." },
+        { inlineData: { mimeType: imageFile.type, data: base64Data } }
+      ],
+    });
+
+    return response.text?.trim() || "NONE";
+  } catch (error) {
+    console.error("OCR Error:", error);
+    return "NONE";
+  }
+}
