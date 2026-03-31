@@ -306,7 +306,7 @@ export function DrugRegistration() {
                     <div className="bg-blue-600 px-6 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Pill className="text-white" size={20} />
-                        <h3 className="text-white font-bold">Bảng thông tin thuốc </h3>
+                        <h3 className="text-white font-bold">Bảng thông tin thuốc (AI)</h3>
                       </div>
                       <div className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
                         Cập nhật 2026
