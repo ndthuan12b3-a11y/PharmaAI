@@ -140,20 +140,14 @@ export default function App() {
       console.error("Full Error Object:", error);
       let errorMsg = "Đã xảy ra lỗi khi kết nối với AI.";
       
-      if (error.message) {
-        if (error.message.includes('MISSING_API_KEY')) {
-          errorMsg = "Lỗi: Chưa tìm thấy API Key. Vui lòng thêm biến GEMINI_API_KEY vào Vercel và Redeploy.";
-        } else if (error.message.includes('API key')) {
-          errorMsg = "Lỗi: Khóa API của bạn bị Google từ chối (Không hợp lệ). Vui lòng kiểm tra lại mã GEMINI_API_KEY đã nhập chính xác chưa.";
-        } else if (error.message.includes('quota')) {
-          errorMsg = "Lỗi: Đã hết hạn mức sử dụng AI (Quota exceeded). Vui lòng thử lại sau.";
-        } else {
-          errorMsg = `Lỗi hệ thống: ${error.message}`;
-        }
-      } else if (typeof error === 'string') {
-        errorMsg = `Lỗi: ${error}`;
+      if (error.message === "QUOTA_EXHAUSTED") {
+        errorMsg = "Lỗi: Đã hết hạn mức sử dụng AI (Quota exceeded). Vui lòng thử lại sau vài phút hoặc ngày mai.";
+      } else if (error.message === "INVALID_API_KEY") {
+        errorMsg = "Lỗi: Khóa API không hợp lệ hoặc đã bị vô hiệu hóa. Vui lòng kiểm tra lại cấu hình.";
+      } else if (error.message === "MISSING_API_KEY") {
+        errorMsg = "Lỗi: Chưa tìm thấy API Key. Vui lòng cấu hình GEMINI_API_KEY.";
       } else {
-        errorMsg = "Lỗi không xác định khi gọi AI. Vui lòng kiểm tra Console log.";
+        errorMsg = `Lỗi hệ thống: ${error.message || "Lỗi không xác định"}`;
       }
       
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'ai', text: errorMsg }]);
@@ -180,11 +174,17 @@ export default function App() {
       }
     } catch (error: any) {
       console.error("Manual TTS Error:", error);
-      if (error.message === 'MISSING_API_KEY') {
-        alert("Lỗi: Chưa có API Key. Vui lòng kiểm tra cài đặt hệ thống.");
+      let errorMsg = "Lỗi khi tạo giọng nói.";
+      if (error.message === "QUOTA_EXHAUSTED") {
+        errorMsg = "AI đã hết hạn mức sử dụng (Quota exceeded). Vui lòng thử lại sau.";
+      } else if (error.message === "INVALID_API_KEY") {
+        errorMsg = "Lỗi cấu hình: API Key không hợp lệ.";
+      } else if (error.message === "MISSING_API_KEY") {
+        errorMsg = "Lỗi: Chưa có API Key.";
       } else {
-        alert(error.message || "Lỗi khi tạo giọng nói.");
+        errorMsg = `Lỗi: ${error.message || "Không xác định"}`;
       }
+      alert(errorMsg);
     } finally {
       setGeneratingAudioIds(prev => {
         const next = new Set(prev);

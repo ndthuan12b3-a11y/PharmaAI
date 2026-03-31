@@ -77,8 +77,13 @@ export function DrugRegistration() {
         // Tự động phân tích sau khi trích xuất thành công
         setTimeout(() => handleAnalyze(extracted), 500);
       }
-    } catch (err) {
-      setError("Lỗi khi xử lý ảnh.");
+    } catch (err: any) {
+      console.error("Lỗi OCR:", err);
+      if (err.message === "QUOTA_EXHAUSTED") {
+        setError("AI đã hết hạn mức sử dụng (Quota exceeded). Vui lòng thử lại sau.");
+      } else {
+        setError(`Lỗi khi xử lý ảnh: ${err.message || "Lỗi không xác định"}`);
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -139,8 +144,17 @@ export function DrugRegistration() {
         drugName,
         aiDrugInfo,
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Lỗi khi tìm kiếm AI:", err);
+      
+      if (err.message === "QUOTA_EXHAUSTED") {
+        setError("AI đã hết hạn mức sử dụng (Quota exceeded). Vui lòng thử lại sau vài phút hoặc ngày mai.");
+      } else if (err.message === "INVALID_API_KEY") {
+        setError("Lỗi cấu hình: API Key không hợp lệ. Vui lòng liên hệ quản trị viên.");
+      } else {
+        setError(`Lỗi AI: ${err.message || "Không thể kết nối"}`);
+      }
+
       // Vẫn hiển thị kết quả phân tích cơ bản nếu AI lỗi
       setResult({
         countryCode,

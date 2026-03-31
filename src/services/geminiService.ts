@@ -93,6 +93,22 @@ const sanitizeTextForTTS = (text: string): string => {
 // 3. MAIN SERVICES (TƯƠNG THÍCH 100% VỚI CODE CŨ)
 // ============================================================================
 
+// Hàm xử lý lỗi Gemini tập trung
+function handleGeminiError(error: any, context: string): never {
+  console.error(`Gemini API Error [${context}]:`, error);
+  
+  const errorMessage = error.message?.toLowerCase() || "";
+  if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+    throw new Error("QUOTA_EXHAUSTED");
+  }
+  
+  if (errorMessage.includes("api key") || errorMessage.includes("invalid")) {
+    throw new Error("INVALID_API_KEY");
+  }
+
+  throw new Error(error.message || "Lỗi không xác định từ AI");
+}
+
 export async function analyzePrescription(
   imageFile: File | null, 
   text: string, 
@@ -143,15 +159,7 @@ export async function analyzePrescription(
     return response.text;
 
   } catch (error: any) {
-    console.error("Gemini API Error Detail:", error);
-    
-    // Bắt lỗi Quota thân thiện
-    const errorMessage = error.message?.toLowerCase() || "";
-    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
-      throw new Error("Lỗi từ AI: Đã hết hạn mức sử dụng tạm thời. Vui lòng thử lại sau vài phút.");
-    }
-
-    throw new Error(`Lỗi từ AI: ${error.message || "Không thể kết nối đến Gemini API"}`);
+    handleGeminiError(error, "analyzePrescription");
   }
 }
 
@@ -181,8 +189,7 @@ export async function generateSpeech(text: string): Promise<string | null> {
 
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
   } catch (error) {
-    console.error("TTS Error:", error);
-    return null; 
+    handleGeminiError(error, "generateSpeech");
   }
 }
 
@@ -220,6 +227,11 @@ export async function searchDrugNameByRegistrationNumber(regNumber: string): Pro
     const text = response.text?.trim() || "Không tìm thấy thông tin";
     return text;
   } catch (error: any) {
+    const errorMessage = error.message?.toLowerCase() || "";
+    if (errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("exhausted")) {
+      handleGeminiError(error, "searchDrugNameByRegistrationNumber");
+    }
+
     console.warn("Google Search failed, falling back to normal search:", error);
     
     try {
@@ -233,8 +245,7 @@ export async function searchDrugNameByRegistrationNumber(regNumber: string): Pro
       });
       return response.text?.trim() || "Không tìm thấy thông tin";
     } catch (fallbackError: any) {
-      console.error("Search Drug Error (Fallback):", fallbackError);
-      return `Lỗi khi tìm kiếm thông tin: ${fallbackError.message || "Lỗi không xác định"}`;
+      handleGeminiError(fallbackError, "searchDrugNameByRegistrationNumber (Fallback)");
     }
   }
 }
@@ -255,7 +266,6 @@ export async function extractRegistrationNumberFromImage(imageFile: File): Promi
 
     return response.text?.trim() || "NONE";
   } catch (error) {
-    console.error("OCR Error:", error);
-    return "NONE";
+    handleGeminiError(error, "extractRegistrationNumberFromImage");
   }
 }
