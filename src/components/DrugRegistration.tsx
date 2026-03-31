@@ -246,7 +246,7 @@ export function DrugRegistration() {
                 className="flex items-center gap-3 text-blue-600 bg-blue-50 p-4 rounded-xl border border-blue-100"
               >
                 <Loader2 className="animate-spin" size={20} />
-                <p className="font-medium"> >AI đang tìm kiếm tên thuốc trên Google...</p>
+                <p className="font-medium">AI đang tìm kiếm tên thuốc trên Google...</p>
               </motion.div>
             )}
 
