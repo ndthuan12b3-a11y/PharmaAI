@@ -383,7 +383,6 @@ export default function App() {
           <ul className="text-[9px] text-amber-800 space-y-1 leading-tight">
             <li>• AI chỉ cung cấp thông tin tham khảo từ Dược thư.</li>
             <li>• Không thay thế chẩn đoán của bác sĩ.</li>
-            <li>• Người dùng tự chịu trách nhiệm khi sử dụng thuốc.</li>
           </ul>
         </div>
 
